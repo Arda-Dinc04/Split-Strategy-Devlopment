@@ -10,12 +10,24 @@ from datetime import datetime, timedelta, timezone
 import os
 from bson import ObjectId
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, use environment variables directly
+
 # Import EDGAR processing functions
 from edgar_workflow_complete import get_cik_mapping_with_names
 from process_reverse_splits_edgar import process_reverse_split_with_edgar
 
 # MongoDB Configuration
-MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb+srv://RS:01SDcSCdulMJREai@cluster0.wauawr1.mongodb.net/?appName=Cluster0")
+MONGODB_URI = os.environ.get("MONGODB_URI")
+if not MONGODB_URI:
+    st.error("❌ MONGODB_URI environment variable is required!")
+    st.info("💡 For local development: Create a `.env` file with `MONGODB_URI=your_connection_string`")
+    st.info("💡 For Streamlit Cloud: Add `MONGODB_URI` in app settings → Secrets")
+    st.stop()
 MONGODB_DATABASE = "split_strategy"
 REVERSE_COLLECTION = "reverse_splits"  # Changed from reverse_sa
 EDGAR_COLLECTION = "reverse_splits_edgar"  # Changed from edgar_events

@@ -37,7 +37,9 @@ from edgar_workflow_complete import (
 )
 
 # MongoDB Configuration
-MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb+srv://RS:01SDcSCdulMJREai@cluster0.wauawr1.mongodb.net/?appName=Cluster0")
+MONGODB_URI = os.environ.get("MONGODB_URI")
+if not MONGODB_URI:
+    raise ValueError("MONGODB_URI environment variable is required. Please set it in your .env file or environment.")
 MONGODB_DATABASE = "split_strategy"
 REVERSE_SPLITS_COLLECTION = "reverse_splits"
 EDGAR_COLLECTION = "reverse_splits_edgar"

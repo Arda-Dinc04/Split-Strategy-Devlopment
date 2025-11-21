@@ -38,11 +38,15 @@
    - **Main file path**: `streamlit_app.py`
    - **App URL**: Choose a custom name (e.g., `split-strategy-dashboard`)
 
-5. **Add secrets** (optional - if you want to override default MongoDB URI):
+5. **Add secrets** (REQUIRED):
    - Click "Advanced settings" → "Secrets"
-   - Add:
+   - Add your MongoDB URI:
      ```
-     MONGODB_URI = mongodb+srv://RS:01SDcSCdulMJREai@cluster0.wauawr1.mongodb.net/?appName=Cluster0
+     MONGODB_URI = your_mongodb_connection_string_here
+     ```
+   - Optional: Add Polygon.io API key if using returns calculation:
+     ```
+     POLYGON_API_KEY = your_polygon_api_key_here
      ```
 
 6. **Click "Deploy!"** 

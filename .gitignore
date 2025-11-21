@@ -30,6 +30,8 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+.env.*
+!.env.example
 
 # CSV backups (optional - uncomment if you don't want to track backups)
 # *_backup.csv
