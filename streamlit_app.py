@@ -61,6 +61,25 @@ def check_rounding_flag(reverse_splits_id: str, db) -> bool:
     
     return False
 
+def get_rounding_filings(reverse_splits_id: str, db) -> list:
+    """Get all EDGAR filings with rounding_up_flag=True"""
+    edgar_filings = list(db[EDGAR_COLLECTION].find({"reverse_splits_id": reverse_splits_id}))
+    
+    rounding_filings = []
+    for filing in edgar_filings:
+        flags = filing.get("flags", {})
+        if flags.get("rounding_up_flag", False):
+            rounding_filings.append({
+                "form": filing.get("form", "Unknown"),
+                "filing_date": filing.get("filing_date", ""),
+                "document_url": filing.get("document_url", ""),
+                "rounding_text": filing.get("text_matches", {}).get("rounding_text", ""),
+                "accession": filing.get("accession", ""),
+                "cik": filing.get("cik", "")
+            })
+    
+    return rounding_filings
+
 def has_edgar_data(reverse_splits_id: str, db) -> bool:
     """Check if split has any EDGAR filings"""
     count = db[EDGAR_COLLECTION].count_documents({"reverse_splits_id": reverse_splits_id})
@@ -142,6 +161,11 @@ def main():
             if has_edgar:
                 rounding = check_rounding_flag(reverse_splits_id, db)
             
+            # Get rounding filings if rounding flag is True
+            rounding_filings = []
+            if rounding:
+                rounding_filings = get_rounding_filings(reverse_splits_id, db)
+            
             recent_splits.append({
                 "Date": split_date_str,
                 "Symbol": split.get("Symbol", ""),
@@ -151,7 +175,8 @@ def main():
                 "Has EDGAR": has_edgar,
                 "reverse_splits_id": reverse_splits_id,
                 "split_date_obj": split_date_only,
-                "split_doc": split
+                "split_doc": split,
+                "rounding_filings": rounding_filings  # Store filings for display
             })
     
     if not recent_splits:
@@ -224,6 +249,39 @@ def main():
     
     styled_df = df.style.apply(highlight_recent, axis=1)
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    
+    # Show EDGAR filings for rows with rounding
+    rounding_splits = [s for s in recent_splits if s["Rounding"] == "Yes" and s["rounding_filings"]]
+    if rounding_splits:
+        st.markdown("---")
+        st.subheader("📄 EDGAR Filings with Rounding Compliance")
+        st.caption("Click to expand and view the actual EDGAR filings that contain rounding language")
+        
+        for split_info in rounding_splits:
+            symbol = split_info["Symbol"]
+            company_name = split_info["Company Name"]
+            split_date = split_info["Date"]
+            filings = split_info["rounding_filings"]
+            
+            with st.expander(f"🔍 {symbol} - {company_name} ({split_date}) - {len(filings)} filing(s)"):
+                for i, filing in enumerate(filings, 1):
+                    st.markdown(f"**Filing {i}: {filing['form']}**")
+                    
+                    col1, col2 = st.columns([2, 1])
+                    with col1:
+                        st.write(f"**Filing Date:** {filing['filing_date']}")
+                        st.write(f"**Accession:** {filing['accession']}")
+                    with col2:
+                        if filing['document_url']:
+                            st.markdown(f"[📄 View Filing]({filing['document_url']})")
+                    
+                    # Show rounding text snippet
+                    if filing.get('rounding_text'):
+                        st.markdown("**Relevant Text:**")
+                        st.code(filing['rounding_text'], language=None)
+                    
+                    if i < len(filings):
+                        st.markdown("---")
     
     # Summary stats
     col1, col2, col3 = st.columns(3)
