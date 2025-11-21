@@ -24,24 +24,35 @@
 - **Background Processing**: Button to process splits without EDGAR data on-demand
 - **Summary Metrics**: Total splits, last 3 days count, and rounding count
 
-## Deploy to Streamlit Cloud (Free)
+## Deploy to Streamlit Cloud (Free & Public)
 
-1. **Push your code to GitHub** (make sure `streamlit_app.py` is in the root)
+1. **Make sure your GitHub repo is public** (or keep it private - Streamlit supports both)
 
 2. **Go to**: https://share.streamlit.io/
 
-3. **Sign in with GitHub**
+3. **Sign in with GitHub** and authorize Streamlit Cloud
 
-4. **Click "New app"** and:
-   - Select your repository
-   - Main file path: `streamlit_app.py`
-   - Branch: `main` (or your default branch)
+4. **Click "New app"** and configure:
+   - **Repository**: Select `Arda-Dinc04/Split-Strategy-Devlopment`
+   - **Branch**: `main`
+   - **Main file path**: `streamlit_app.py`
+   - **App URL**: Choose a custom name (e.g., `split-strategy-dashboard`)
 
-5. **Add secrets** (if needed):
-   - Go to app settings → Secrets
-   - Add `MONGODB_URI` if you want to override the default
+5. **Add secrets** (optional - if you want to override default MongoDB URI):
+   - Click "Advanced settings" → "Secrets"
+   - Add:
+     ```
+     MONGODB_URI = mongodb+srv://RS:01SDcSCdulMJREai@cluster0.wauawr1.mongodb.net/?appName=Cluster0
+     ```
 
-6. **Deploy!** The app will be live at: `https://your-app-name.streamlit.app`
+6. **Click "Deploy!"** 
+   - First deployment takes 2-3 minutes
+   - Your app will be live at: `https://split-strategy-dashboard.streamlit.app` (or your chosen name)
+
+7. **Make app public** (if repo is private):
+   - Go to app settings → "Sharing"
+   - Toggle "Public app" to ON
+   - Now anyone with the link can access it
 
 ## Mobile Access
 
