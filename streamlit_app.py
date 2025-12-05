@@ -305,6 +305,13 @@ def main():
     
     st.title("📊 Recent Reverse Splits Dashboard")
     
+    # Add refresh button to clear cache
+    col1, col2 = st.columns([1, 10])
+    with col1:
+        if st.button("🔄 Refresh", help="Clear cache and reload data from MongoDB"):
+            st.cache_data.clear()
+            st.rerun()
+    
     # DEBUG: Environment check
     with st.expander("🔍 Environment Debug Info", expanded=False):
         st.code(f"PYTHON EXECUTABLE: {sys.executable}")
@@ -342,11 +349,11 @@ def main():
         st.error(f"Error connecting to MongoDB: {e}")
         return
     
-    # Get date range
+    # Get date range - Show splits from 3 days ago onwards (including all future dates)
     today = datetime.now().date()
     three_days_ago = today - timedelta(days=3)
     
-    # Query recent splits (from 3 days ago to future)
+    # Query ALL splits (we'll filter by date below)
     splits = list(reverse_collection.find({}).sort("Date", -1))
     
     # Filter and process splits
@@ -358,7 +365,7 @@ def main():
         if not split_date:
             continue
         
-        # Only include splits from 3 days ago onwards (including future)
+        # Only include splits from 3 days ago onwards (including ALL future dates)
         split_date_only = split_date.date()
         if split_date_only >= three_days_ago:
             reverse_splits_id = str(split.get("_id"))
@@ -388,6 +395,18 @@ def main():
                 "split_doc": split,
                 "rounding_filings": rounding_filings  # Store filings for display
             })
+    
+    # Debug: Show what we found
+    with st.expander("🔍 Debug: MongoDB Query Results", expanded=False):
+        st.write(f"**Total splits in collection:** {reverse_collection.count_documents({})}")
+        st.write(f"**Splits after date filter (>= {three_days_ago}):** {len(recent_splits)}")
+        st.write(f"**Date range filter:** {three_days_ago} to future")
+        
+        # Show sample dates from MongoDB
+        sample_docs = list(reverse_collection.find({}, {"Date": 1, "Symbol": 1}).sort("Date", -1).limit(10))
+        st.write("**Sample dates from MongoDB (most recent 10):**")
+        for doc in sample_docs:
+            st.write(f"  - {doc.get('Date', 'N/A')} | {doc.get('Symbol', 'N/A')}")
     
     if not recent_splits:
         st.info("No recent reverse splits found (from 3 days ago to future).")
@@ -467,178 +486,178 @@ def main():
     
     st.dataframe(styled_df, use_container_width=True, hide_index=True, height=400)
     
-    # Live Price Charts Section
-    st.markdown("---")
-    st.subheader("📈 Price Charts & Returns Analysis")
-    st.caption("Price action and returns around reverse split dates")
-    
-    # Get unique symbols from displayed splits
-    unique_symbols = list(set([s["Symbol"] for s in recent_splits]))
-    
-    if not unique_symbols:
-        st.info("No stocks to display charts for.")
-    else:
-        # Show progress
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        price_data_available = []
-        price_data_failed = []
-        
-        for idx, split_info in enumerate(recent_splits):
-            symbol = split_info["Symbol"]
-            split_date_obj = split_info["split_date_obj"]
-            
-            status_text.text(f"Fetching data for {symbol} ({idx+1}/{len(recent_splits)})...")
-            progress_bar.progress((idx + 1) / len(recent_splits))
-            
-            try:
-                # Get price data around split date
-                price_data, returns = get_stock_price_data_around_split(
-                    symbol, 
-                    datetime.combine(split_date_obj, datetime.min.time()),
-                    days_before=30,
-                    days_after=10
-                )
-                
-                if price_data is not None and not price_data.empty:
-                    price_data_available.append({
-                        'symbol': symbol,
-                        'company_name': split_info["Company Name"],
-                        'split_date': split_info["Date"],
-                        'split_date_obj': split_date_obj,
-                        'split_ratio': split_info["Split Ratio"],
-                        'data': price_data,
-                        'returns': returns
-                    })
-                else:
-                    price_data_failed.append(symbol)
-            except Exception as e:
-                st.error(f"❌ Error processing {symbol}: {str(e)[:200]}")
-                price_data_failed.append(symbol)
-            
-            # Small delay to avoid rate limiting
-            time.sleep(0.3)
-        
-        progress_bar.empty()
-        status_text.empty()
-        
-        # Display charts in collapsible expanders
-        if price_data_available:
-            st.success(f"✅ Found price data for {len(price_data_available)} stock(s)")
-            st.caption("Click to expand/collapse each stock for detailed analysis")
-            
-            for stock_info in price_data_available:
-                symbol = stock_info['symbol']
-                company_name = stock_info['company_name']
-                split_date = stock_info['split_date']
-                split_ratio = stock_info['split_ratio']
-                price_data = stock_info['data']
-                returns = stock_info['returns']
-                
-                # Create summary for collapsed view
-                summary_parts = []
-                if returns:
-                    # Get key returns for summary
-                    ret_20d = returns.get('20d_before')
-                    ret_10d = returns.get('10d_before')
-                    ret_1d_before = returns.get('1d_before')
-                    ret_1d_after = returns.get('1d_after')
-                    ret_5d_after = returns.get('5d_after')
-                    
-                    summary_parts.append(f"Split: {split_ratio} on {split_date}")
-                    if returns.get('split_price'):
-                        summary_parts.append(f"Price: ${returns['split_price']:.4f}")
-                    
-                    # Add key returns to summary
-                    ret_summary = []
-                    if ret_20d is not None:
-                        ret_summary.append(f"20d: {ret_20d:+.1f}%")
-                    if ret_1d_before is not None:
-                        ret_summary.append(f"1d before: {ret_1d_before:+.1f}%")
-                    if ret_1d_after is not None:
-                        ret_summary.append(f"1d after: {ret_1d_after:+.1f}%")
-                    if ret_5d_after is not None:
-                        ret_summary.append(f"5d after: {ret_5d_after:+.1f}%")
-                    
-                    if ret_summary:
-                        summary_parts.append(" | ".join(ret_summary))
-                
-                summary_text = " | ".join(summary_parts) if summary_parts else f"Split: {split_ratio} on {split_date}"
-                
-                # Collapsible expander with bold ticker (no emojis)
-                expander_title = f"**{symbol}** - {company_name} | {summary_text}"
-                with st.expander(expander_title, expanded=False):
-                    # Header info
-                    col_header1, col_header2 = st.columns([2, 1])
-                    with col_header1:
-                        st.markdown(f"**{company_name}** ({symbol})")
-                        st.caption(f"Reverse Split: {split_ratio} | Date: {split_date}")
-                    with col_header2:
-                        if returns and returns.get('split_price'):
-                            st.metric("Split Price", f"${returns['split_price']:.4f}")
-                    
-                    # Returns metrics in two columns
-                    if returns:
-                        st.markdown("---")
-                        st.markdown("### Returns Analysis")
-                        
-                        ret_col1, ret_col2 = st.columns(2)
-                        
-                        with ret_col1:
-                            st.markdown("**Returns Before Split:**")
-                            returns_before = []
-                            for window in [20, 10, 5, 3, 1]:
-                                ret_val = returns.get(f'{window}d_before')
-                                if ret_val is not None:
-                                    color_indicator = "🔴" if ret_val < 0 else "🟢"
-                                    returns_before.append(f"{color_indicator} **{window}d:** {ret_val:+.2f}%")
-                            
-                            if returns_before:
-                                for ret_line in returns_before:
-                                    st.markdown(ret_line)
-                            else:
-                                st.caption("No data available")
-                        
-                        with ret_col2:
-                            st.markdown("**Returns After Split:**")
-                            returns_after = []
-                            for window in [1, 3, 5, 10]:
-                                ret_val = returns.get(f'{window}d_after')
-                                if ret_val is not None:
-                                    color_indicator = "🔴" if ret_val < 0 else "🟢"
-                                    returns_after.append(f"{color_indicator} **{window}d:** {ret_val:+.2f}%")
-                            
-                            if returns_after:
-                                for ret_line in returns_after:
-                                    st.markdown(ret_line)
-                            else:
-                                st.caption("No post-split data available")
-                    
-                    # Price chart
-                    st.markdown("---")
-                    st.markdown("### Price Chart")
-                    try:
-                        st.line_chart(price_data, height=300, use_container_width=True)
-                        if returns and returns.get('split_date'):
-                            split_date_str = returns['split_date']
-                            st.caption(f"Split date: {split_date_str} | Data points: {len(price_data)}")
-                    except Exception as e:
-                        st.error(f"Chart error: {str(e)[:200]}")
-                    
-                    # Show raw data (can't nest expanders, so show directly or use toggle)
-                    show_raw_data = st.checkbox(f"Show Raw Price Data", key=f"raw_{symbol}", value=False)
-                    if show_raw_data:
-                        st.dataframe(price_data, use_container_width=True)
-        
-        # Show failed symbols
-        if price_data_failed:
-            with st.expander(f"{len(price_data_failed)} stock(s) without price data"):
-                st.write(", ".join(price_data_failed))
-                st.caption("These may be OTC/delisted stocks not available on yfinance")
-        
-        if not price_data_available:
-            st.warning("⚠️ No price data available for any displayed stocks. They may be OTC/delisted stocks.")
+    # Live Price Charts Section - HIDDEN FOR NOW
+    # st.markdown("---")
+    # st.subheader("📈 Price Charts & Returns Analysis")
+    # st.caption("Price action and returns around reverse split dates")
+    # 
+    # # Get unique symbols from displayed splits
+    # unique_symbols = list(set([s["Symbol"] for s in recent_splits]))
+    # 
+    # if not unique_symbols:
+    #     st.info("No stocks to display charts for.")
+    # else:
+    #     # Show progress
+    #     progress_bar = st.progress(0)
+    #     status_text = st.empty()
+    #     
+    #     price_data_available = []
+    #     price_data_failed = []
+    #     
+    #     for idx, split_info in enumerate(recent_splits):
+    #         symbol = split_info["Symbol"]
+    #         split_date_obj = split_info["split_date_obj"]
+    #         
+    #         status_text.text(f"Fetching data for {symbol} ({idx+1}/{len(recent_splits)})...")
+    #         progress_bar.progress((idx + 1) / len(recent_splits))
+    #         
+    #         try:
+    #             # Get price data around split date
+    #             price_data, returns = get_stock_price_data_around_split(
+    #                 symbol, 
+    #                 datetime.combine(split_date_obj, datetime.min.time()),
+    #                 days_before=30,
+    #                 days_after=10
+    #             )
+    #             
+    #             if price_data is not None and not price_data.empty:
+    #                 price_data_available.append({
+    #                     'symbol': symbol,
+    #                     'company_name': split_info["Company Name"],
+    #                     'split_date': split_info["Date"],
+    #                     'split_date_obj': split_date_obj,
+    #                     'split_ratio': split_info["Split Ratio"],
+    #                     'data': price_data,
+    #                     'returns': returns
+    #                 })
+    #             else:
+    #                 price_data_failed.append(symbol)
+    #         except Exception as e:
+    #             st.error(f"❌ Error processing {symbol}: {str(e)[:200]}")
+    #             price_data_failed.append(symbol)
+    #         
+    #         # Small delay to avoid rate limiting
+    #         time.sleep(0.3)
+    #     
+    #     progress_bar.empty()
+    #     status_text.empty()
+    #     
+    #     # Display charts in collapsible expanders
+    #     if price_data_available:
+    #         st.success(f"✅ Found price data for {len(price_data_available)} stock(s)")
+    #         st.caption("Click to expand/collapse each stock for detailed analysis")
+    #         
+    #         for stock_info in price_data_available:
+    #             symbol = stock_info['symbol']
+    #             company_name = stock_info['company_name']
+    #             split_date = stock_info['split_date']
+    #             split_ratio = stock_info['split_ratio']
+    #             price_data = stock_info['data']
+    #             returns = stock_info['returns']
+    #             
+    #             # Create summary for collapsed view
+    #             summary_parts = []
+    #             if returns:
+    #                 # Get key returns for summary
+    #                 ret_20d = returns.get('20d_before')
+    #                 ret_10d = returns.get('10d_before')
+    #                 ret_1d_before = returns.get('1d_before')
+    #                 ret_1d_after = returns.get('1d_after')
+    #                 ret_5d_after = returns.get('5d_after')
+    #                 
+    #                 summary_parts.append(f"Split: {split_ratio} on {split_date}")
+    #                 if returns.get('split_price'):
+    #                     summary_parts.append(f"Price: ${returns['split_price']:.4f}")
+    #                 
+    #                 # Add key returns to summary
+    #                 ret_summary = []
+    #                 if ret_20d is not None:
+    #                     ret_summary.append(f"20d: {ret_20d:+.1f}%")
+    #                 if ret_1d_before is not None:
+    #                     ret_summary.append(f"1d before: {ret_1d_before:+.1f}%")
+    #                 if ret_1d_after is not None:
+    #                     ret_summary.append(f"1d after: {ret_1d_after:+.1f}%")
+    #                 if ret_5d_after is not None:
+    #                     ret_summary.append(f"5d after: {ret_5d_after:+.1f}%")
+    #                 
+    #                 if ret_summary:
+    #                     summary_parts.append(" | ".join(ret_summary))
+    #             
+    #             summary_text = " | ".join(summary_parts) if summary_parts else f"Split: {split_ratio} on {split_date}"
+    #             
+    #             # Collapsible expander with bold ticker (no emojis)
+    #             expander_title = f"**{symbol}** - {company_name} | {summary_text}"
+    #             with st.expander(expander_title, expanded=False):
+    #                 # Header info
+    #                 col_header1, col_header2 = st.columns([2, 1])
+    #                 with col_header1:
+    #                     st.markdown(f"**{company_name}** ({symbol})")
+    #                     st.caption(f"Reverse Split: {split_ratio} | Date: {split_date}")
+    #                 with col_header2:
+    #                     if returns and returns.get('split_price'):
+    #                         st.metric("Split Price", f"${returns['split_price']:.4f}")
+    #                 
+    #                 # Returns metrics in two columns
+    #                 if returns:
+    #                     st.markdown("---")
+    #                     st.markdown("### Returns Analysis")
+    #                     
+    #                     ret_col1, ret_col2 = st.columns(2)
+    #                     
+    #                     with ret_col1:
+    #                         st.markdown("**Returns Before Split:**")
+    #                         returns_before = []
+    #                         for window in [20, 10, 5, 3, 1]:
+    #                             ret_val = returns.get(f'{window}d_before')
+    #                             if ret_val is not None:
+    #                                 color_indicator = "🔴" if ret_val < 0 else "🟢"
+    #                                 returns_before.append(f"{color_indicator} **{window}d:** {ret_val:+.2f}%")
+    #                         
+    #                         if returns_before:
+    #                             for ret_line in returns_before:
+    #                                 st.markdown(ret_line)
+    #                         else:
+    #                             st.caption("No data available")
+    #                     
+    #                     with ret_col2:
+    #                         st.markdown("**Returns After Split:**")
+    #                         returns_after = []
+    #                         for window in [1, 3, 5, 10]:
+    #                             ret_val = returns.get(f'{window}d_after')
+    #                             if ret_val is not None:
+    #                                 color_indicator = "🔴" if ret_val < 0 else "🟢"
+    #                                 returns_after.append(f"{color_indicator} **{window}d:** {ret_val:+.2f}%")
+    #                         
+    #                         if returns_after:
+    #                             for ret_line in returns_after:
+    #                                 st.markdown(ret_line)
+    #                         else:
+    #                             st.caption("No post-split data available")
+    #                 
+    #                 # Price chart
+    #                 st.markdown("---")
+    #                 st.markdown("### Price Chart")
+    #                 try:
+    #                     st.line_chart(price_data, height=300, use_container_width=True)
+    #                     if returns and returns.get('split_date'):
+    #                         split_date_str = returns['split_date']
+    #                         st.caption(f"Split date: {split_date_str} | Data points: {len(price_data)}")
+    #                 except Exception as e:
+    #                     st.error(f"Chart error: {str(e)[:200]}")
+    #                 
+    #                 # Show raw data (can't nest expanders, so show directly or use toggle)
+    #                 show_raw_data = st.checkbox(f"Show Raw Price Data", key=f"raw_{symbol}", value=False)
+    #                 if show_raw_data:
+    #                     st.dataframe(price_data, use_container_width=True)
+    #     
+    #     # Show failed symbols
+    #     if price_data_failed:
+    #         with st.expander(f"{len(price_data_failed)} stock(s) without price data"):
+    #             st.write(", ".join(price_data_failed))
+    #             st.caption("These may be OTC/delisted stocks not available on yfinance")
+    #     
+    #     if not price_data_available:
+    #         st.warning("⚠️ No price data available for any displayed stocks. They may be OTC/delisted stocks.")
     
     # Show EDGAR filings for rows with rounding
     rounding_splits = [s for s in recent_splits if s["Rounding"] == "Yes" and s["rounding_filings"]]

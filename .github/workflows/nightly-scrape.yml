@@ -26,11 +26,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      - name: Run stock split collector
+      - name: Run stock split collector (web scraping)
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
           MONGODB_COLLECTION: ${{ secrets.MONGODB_COLLECTION }}
         run: |
           python web_parse_script/web_parse.py
+      
+      - name: Run EDGAR batch processor
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
+          SEC_USER_AGENT: "Split Strategy Analysis contact@splitstrategy.com"
+        run: |
+          python batch_process_edgar_nightly.py
 
