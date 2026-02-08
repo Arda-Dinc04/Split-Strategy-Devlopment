@@ -41,4 +41,10 @@ jobs:
           SEC_USER_AGENT: "Split Strategy Analysis contact@splitstrategy.com"
         run: |
           python batch_process_edgar_nightly.py
+      
+      - name: Run Early Warning Scanner (daily)
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          python -m edgar_scraping.scan_early_warnings
 

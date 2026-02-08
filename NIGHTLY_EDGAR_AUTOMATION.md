@@ -16,7 +16,13 @@ The GitHub Actions workflow now automatically processes EDGAR filings for revers
 - Queries SEC EDGAR database for relevant filings (8-K, 6-K, DEF 14A, etc.)
 - Extracts and scores filings for reverse split information
 - Pushes EDGAR filings to MongoDB `reverse_splits_edgar` collection
+- Pushes EDGAR filings to MongoDB `reverse_splits_edgar` collection
 - Links filings to splits via `reverse_splits_id` (MongoDB `_id`)
+
+### 3. Early Warning Scanner (`scan_early_warnings.py`)
+- Scans daily filings for *prospective* splits (Deficiency Notices, Split Proposals)
+- Saves hits to `prospective_splits` collection
+- Runs after the other steps
 
 ## Workflow File
 
