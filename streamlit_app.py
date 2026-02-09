@@ -533,55 +533,64 @@ def main():
                 st.metric("With Rounding", rounding_count)
             
     with tab2:
-        st.header("⚠️ Early Warning Signals")
+        st.header("Early EDGAR (Announced Splits)")
         st.markdown("""
-        Scanning daily 8-K (Deficiency Notices) and 14A (Proxy Statements) filings for early indications of reverse splits.
-        - **Deficiency Notices**: Companies trading under $1.00 who received a Nasdaq warning.
-        - **Proposals**: Companies asking shareholders to vote on a potential reverse split.
+        Real-time feed of **confirmed** reverse split announcements detected in 8-K/6-K filings.
+        - **Rounding**: Indicates if fractional shares will be rounded up (Major Opportunity).
+        - **Confidence**: AI analysis confidence level.
         """)
         
-        PROSPECTIVE_COLLECTION = "prospective_splits"
+        EARLY_EDGAR_COLLECTION = "early_edgar_splits"
         try:
-            prospective_collection = db[PROSPECTIVE_COLLECTION]
-            # Fetch all prospective splits, sorted by date (newest first)
-            prospective_splits = list(prospective_collection.find({}).sort("fililing_date", -1))
+            early_collection = db[EARLY_EDGAR_COLLECTION]
+            # Fetch all, sorted by filing date (newest first)
+            early_splits = list(early_collection.find({}).sort("filing_date", -1))
             
-            if not prospective_splits:
-                st.info("No early warning signals found yet. Run the scanner to populate this list.")
+            if not early_splits:
+                st.info("No announced splits found yet. Run the `scan_early_edgar.py` script to populate.")
             else:
-                st.info(f"Checking {len(prospective_splits)} potential future splits...")
+                st.success(f"Found {len(early_splits)} confirmed announcements.")
                 
-                start_data = []
-                for p in prospective_splits:
-                    start_data.append({
-                        "Date": p.get("fililing_date"),
+                display_data = []
+                for p in early_splits:
+                    # Format Rounding with Icon (User preference: simple text)
+                    rounding = "?"
+                    if p.get("rounding_up") is True:
+                        rounding = "YES"
+                    elif p.get("rounding_up") is False:
+                        rounding = "NO"
+                        
+                    display_data.append({
+                        "Filing Date": p.get("filing_date"),
                         "Ticker": p.get("ticker", "UNKNOWN"),
                         "Company": p.get("company_name"),
-                        "Signal": p.get("signal_type", "").replace("_", " ").title(),
-                        "Form": p.get("form"),
-                        "Details": p.get("details", {}).get("symptom", ""),
+                        "Effective Date": p.get("effective_date", "Pending"),
+                        "Ratio": p.get("ratio", "?"),
+                        "Rounding": rounding,
+                        "Summary": p.get("summary", ""),
+                        "Confidence": p.get("confidence", "N/A"),
                         "Link": p.get("filing_url")
                     })
                 
-                p_df = pd.DataFrame(start_data)
+                e_df = pd.DataFrame(display_data)
                 
-                # Convert Date column to datetime objects for column_config.DateColumn
-                if not p_df.empty and "Date" in p_df.columns:
-                    p_df["Date"] = pd.to_datetime(p_df["Date"])
+                if not e_df.empty and "Filing Date" in e_df.columns:
+                    e_df["Filing Date"] = pd.to_datetime(e_df["Filing Date"])
 
-                # Make the Link column actually clickable
                 st.data_editor(
-                    p_df,
+                    e_df,
                     column_config={
                         "Link": st.column_config.LinkColumn("Filing URL", display_text="View Filing"),
-                        "Date": st.column_config.DateColumn("Filing Date", format="YYYY-MM-DD"),
+                        "Filing Date": st.column_config.DateColumn("Filing Date", format="YYYY-MM-DD"),
+                        "Summary": st.column_config.TextColumn("AI Summary", width="large", help="Full summary available on hover"),
+                        "Rounding": st.column_config.TextColumn("Rounding Up?", help="Does the filing explicitly state fractional shares are rounded up?"),
                     },
                     hide_index=True,
                     use_container_width=True
                 )
                 
         except Exception as e:
-            st.error(f"Error fetching early warnings: {e}")
+            st.error(f"Error fetching Early EDGAR data: {e}")
 
     # Refresh button
     st.markdown("---")
