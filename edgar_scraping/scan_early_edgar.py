@@ -65,7 +65,7 @@ except ImportError:
 MONGODB_URI = os.environ.get("MONGODB_URI")
 if not MONGODB_URI:
     print("Warning: MONGODB_URI not set. DB operations will fail.")
-MONGODB_DATABASE = "split_strategy"
+MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "split_strategy")
 EARLY_EDGAR_COLLECTION = "early_edgar_splits"
 
 # OpenAI Configuration
