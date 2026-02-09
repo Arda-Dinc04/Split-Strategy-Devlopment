@@ -408,301 +408,181 @@ def main():
         for doc in sample_docs:
             st.write(f"  - {doc.get('Date', 'N/A')} | {doc.get('Symbol', 'N/A')}")
     
-    if not recent_splits:
-        st.info("No recent reverse splits found (from 3 days ago to future).")
-        client.close()
-        return
+    # Create tabs for different views
+    tab1, tab2 = st.tabs(["📉 Confirmed Splits", "⚠️ Early Warnings"])
     
-    # Sort by date (most recent first)
-    recent_splits.sort(key=lambda x: x["split_date_obj"], reverse=True)
-    
-    # Identify splits that need EDGAR processing
-    splits_to_process = [s for s in recent_splits if not s["Has EDGAR"]]
-    
-    # Process splits without EDGAR data
-    if splits_to_process:
-        st.warning(f"⚠️ Found {len(splits_to_process)} split(s) without EDGAR data.")
-        
-        if st.button(f"🔍 Process EDGAR Data for {len(splits_to_process)} Split(s)", type="primary"):
-            cik_mappings = get_cik_mappings()
-            results = process_splits_without_edgar(splits_to_process, cik_mappings)
+    with tab1:
+        if not recent_splits:
+            st.info("No recent reverse splits found (from 3 days ago to future).")
+        else:
+            # Sort by date (most recent first)
+            recent_splits.sort(key=lambda x: x["split_date_obj"], reverse=True)
             
-            # Show results
-            success_count = sum(1 for r in results if r["status"] == "success")
-            st.success(f"✅ Processed {success_count}/{len(results)} splits successfully!")
+            # Identify splits that need EDGAR processing
+            splits_to_process = [s for s in recent_splits if not s["Has EDGAR"]]
             
-            # Refresh to show updated data
-            st.rerun()
-        
-        # Show which splits need processing
-        with st.expander(f"View {len(splits_to_process)} splits needing EDGAR processing"):
-            missing_df = pd.DataFrame([
-                {
-                    "Symbol": s["Symbol"],
-                    "Date": s["Date"],
-                    "Company Name": s["Company Name"]
-                }
-                for s in splits_to_process
-            ])
-            st.dataframe(missing_df, use_container_width=True, hide_index=True)
-    
-    # Prepare DataFrame for display
-    display_data = []
-    for split_info in recent_splits:
-        # Determine if should highlight (within last 3 days)
-        is_recent = split_info["split_date_obj"] >= three_days_ago and split_info["split_date_obj"] <= today
-        
-        display_data.append({
-            "Date": split_info["Date"],
-            "Symbol": split_info["Symbol"],
-            "Company Name": split_info["Company Name"],
-            "Split Ratio": split_info["Split Ratio"],
-            "Rounding": split_info["Rounding"],
-            "_highlight": is_recent
-        })
-    
-    df = pd.DataFrame(display_data)
-    
-    # Remove highlight column before display
-    highlight_mask = df.pop("_highlight")
-    
-    # Display table with highlighting
-    st.subheader(f"Recent Reverse Splits ({len(recent_splits)} total)")
-    st.caption(f"Showing splits from {three_days_ago.strftime('%Y-%m-%d')} onwards. Highlighted rows are within the last 3 days.")
-    
-    # Style the dataframe with better contrast and readability
-    def highlight_recent(row):
-        if row.name < len(highlight_mask) and highlight_mask.iloc[row.name]:
-            # Highlight recent rows with a subtle blue background and bold black text
-            return ['background-color: #e3f2fd; color: #000000; font-weight: 600'] * len(row)
-        # Non-highlighted rows: white background with normal black text
-        return ['background-color: #ffffff; color: #212121'] * len(row)
-    
-    # Apply styling with better table display
-    styled_df = df.style.apply(highlight_recent, axis=1).set_properties(**{
-        'text-align': 'left',
-        'padding': '8px'
-    })
-    
-    st.dataframe(styled_df, use_container_width=True, hide_index=True, height=400)
-    
-    # Live Price Charts Section - HIDDEN FOR NOW
-    # st.markdown("---")
-    # st.subheader("📈 Price Charts & Returns Analysis")
-    # st.caption("Price action and returns around reverse split dates")
-    # 
-    # # Get unique symbols from displayed splits
-    # unique_symbols = list(set([s["Symbol"] for s in recent_splits]))
-    # 
-    # if not unique_symbols:
-    #     st.info("No stocks to display charts for.")
-    # else:
-    #     # Show progress
-    #     progress_bar = st.progress(0)
-    #     status_text = st.empty()
-    #     
-    #     price_data_available = []
-    #     price_data_failed = []
-    #     
-    #     for idx, split_info in enumerate(recent_splits):
-    #         symbol = split_info["Symbol"]
-    #         split_date_obj = split_info["split_date_obj"]
-    #         
-    #         status_text.text(f"Fetching data for {symbol} ({idx+1}/{len(recent_splits)})...")
-    #         progress_bar.progress((idx + 1) / len(recent_splits))
-    #         
-    #         try:
-    #             # Get price data around split date
-    #             price_data, returns = get_stock_price_data_around_split(
-    #                 symbol, 
-    #                 datetime.combine(split_date_obj, datetime.min.time()),
-    #                 days_before=30,
-    #                 days_after=10
-    #             )
-    #             
-    #             if price_data is not None and not price_data.empty:
-    #                 price_data_available.append({
-    #                     'symbol': symbol,
-    #                     'company_name': split_info["Company Name"],
-    #                     'split_date': split_info["Date"],
-    #                     'split_date_obj': split_date_obj,
-    #                     'split_ratio': split_info["Split Ratio"],
-    #                     'data': price_data,
-    #                     'returns': returns
-    #                 })
-    #             else:
-    #                 price_data_failed.append(symbol)
-    #         except Exception as e:
-    #             st.error(f"❌ Error processing {symbol}: {str(e)[:200]}")
-    #             price_data_failed.append(symbol)
-    #         
-    #         # Small delay to avoid rate limiting
-    #         time.sleep(0.3)
-    #     
-    #     progress_bar.empty()
-    #     status_text.empty()
-    #     
-    #     # Display charts in collapsible expanders
-    #     if price_data_available:
-    #         st.success(f"✅ Found price data for {len(price_data_available)} stock(s)")
-    #         st.caption("Click to expand/collapse each stock for detailed analysis")
-    #         
-    #         for stock_info in price_data_available:
-    #             symbol = stock_info['symbol']
-    #             company_name = stock_info['company_name']
-    #             split_date = stock_info['split_date']
-    #             split_ratio = stock_info['split_ratio']
-    #             price_data = stock_info['data']
-    #             returns = stock_info['returns']
-    #             
-    #             # Create summary for collapsed view
-    #             summary_parts = []
-    #             if returns:
-    #                 # Get key returns for summary
-    #                 ret_20d = returns.get('20d_before')
-    #                 ret_10d = returns.get('10d_before')
-    #                 ret_1d_before = returns.get('1d_before')
-    #                 ret_1d_after = returns.get('1d_after')
-    #                 ret_5d_after = returns.get('5d_after')
-    #                 
-    #                 summary_parts.append(f"Split: {split_ratio} on {split_date}")
-    #                 if returns.get('split_price'):
-    #                     summary_parts.append(f"Price: ${returns['split_price']:.4f}")
-    #                 
-    #                 # Add key returns to summary
-    #                 ret_summary = []
-    #                 if ret_20d is not None:
-    #                     ret_summary.append(f"20d: {ret_20d:+.1f}%")
-    #                 if ret_1d_before is not None:
-    #                     ret_summary.append(f"1d before: {ret_1d_before:+.1f}%")
-    #                 if ret_1d_after is not None:
-    #                     ret_summary.append(f"1d after: {ret_1d_after:+.1f}%")
-    #                 if ret_5d_after is not None:
-    #                     ret_summary.append(f"5d after: {ret_5d_after:+.1f}%")
-    #                 
-    #                 if ret_summary:
-    #                     summary_parts.append(" | ".join(ret_summary))
-    #             
-    #             summary_text = " | ".join(summary_parts) if summary_parts else f"Split: {split_ratio} on {split_date}"
-    #             
-    #             # Collapsible expander with bold ticker (no emojis)
-    #             expander_title = f"**{symbol}** - {company_name} | {summary_text}"
-    #             with st.expander(expander_title, expanded=False):
-    #                 # Header info
-    #                 col_header1, col_header2 = st.columns([2, 1])
-    #                 with col_header1:
-    #                     st.markdown(f"**{company_name}** ({symbol})")
-    #                     st.caption(f"Reverse Split: {split_ratio} | Date: {split_date}")
-    #                 with col_header2:
-    #                     if returns and returns.get('split_price'):
-    #                         st.metric("Split Price", f"${returns['split_price']:.4f}")
-    #                 
-    #                 # Returns metrics in two columns
-    #                 if returns:
-    #                     st.markdown("---")
-    #                     st.markdown("### Returns Analysis")
-    #                     
-    #                     ret_col1, ret_col2 = st.columns(2)
-    #                     
-    #                     with ret_col1:
-    #                         st.markdown("**Returns Before Split:**")
-    #                         returns_before = []
-    #                         for window in [20, 10, 5, 3, 1]:
-    #                             ret_val = returns.get(f'{window}d_before')
-    #                             if ret_val is not None:
-    #                                 color_indicator = "🔴" if ret_val < 0 else "🟢"
-    #                                 returns_before.append(f"{color_indicator} **{window}d:** {ret_val:+.2f}%")
-    #                         
-    #                         if returns_before:
-    #                             for ret_line in returns_before:
-    #                                 st.markdown(ret_line)
-    #                         else:
-    #                             st.caption("No data available")
-    #                     
-    #                     with ret_col2:
-    #                         st.markdown("**Returns After Split:**")
-    #                         returns_after = []
-    #                         for window in [1, 3, 5, 10]:
-    #                             ret_val = returns.get(f'{window}d_after')
-    #                             if ret_val is not None:
-    #                                 color_indicator = "🔴" if ret_val < 0 else "🟢"
-    #                                 returns_after.append(f"{color_indicator} **{window}d:** {ret_val:+.2f}%")
-    #                         
-    #                         if returns_after:
-    #                             for ret_line in returns_after:
-    #                                 st.markdown(ret_line)
-    #                         else:
-    #                             st.caption("No post-split data available")
-    #                 
-    #                 # Price chart
-    #                 st.markdown("---")
-    #                 st.markdown("### Price Chart")
-    #                 try:
-    #                     st.line_chart(price_data, height=300, use_container_width=True)
-    #                     if returns and returns.get('split_date'):
-    #                         split_date_str = returns['split_date']
-    #                         st.caption(f"Split date: {split_date_str} | Data points: {len(price_data)}")
-    #                 except Exception as e:
-    #                     st.error(f"Chart error: {str(e)[:200]}")
-    #                 
-    #                 # Show raw data (can't nest expanders, so show directly or use toggle)
-    #                 show_raw_data = st.checkbox(f"Show Raw Price Data", key=f"raw_{symbol}", value=False)
-    #                 if show_raw_data:
-    #                     st.dataframe(price_data, use_container_width=True)
-    #     
-    #     # Show failed symbols
-    #     if price_data_failed:
-    #         with st.expander(f"{len(price_data_failed)} stock(s) without price data"):
-    #             st.write(", ".join(price_data_failed))
-    #             st.caption("These may be OTC/delisted stocks not available on yfinance")
-    #     
-    #     if not price_data_available:
-    #         st.warning("⚠️ No price data available for any displayed stocks. They may be OTC/delisted stocks.")
-    
-    # Show EDGAR filings for rows with rounding
-    rounding_splits = [s for s in recent_splits if s["Rounding"] == "Yes" and s["rounding_filings"]]
-    if rounding_splits:
-        st.markdown("---")
-        st.subheader("📄 EDGAR Filings with Rounding Compliance")
-        st.caption("Click to expand and view the actual EDGAR filings that contain rounding language")
-        
-        for split_info in rounding_splits:
-            symbol = split_info["Symbol"]
-            company_name = split_info["Company Name"]
-            split_date = split_info["Date"]
-            filings = split_info["rounding_filings"]
+            # Process splits without EDGAR data
+            if splits_to_process:
+                st.warning(f"⚠️ Found {len(splits_to_process)} split(s) without EDGAR data.")
+                
+                if st.button(f"🔍 Process EDGAR Data for {len(splits_to_process)} Split(s)", type="primary"):
+                    cik_mappings = get_cik_mappings()
+                    results = process_splits_without_edgar(splits_to_process, cik_mappings)
+                    
+                    # Show results
+                    success_count = sum(1 for r in results if r["status"] == "success")
+                    st.success(f"✅ Processed {success_count}/{len(results)} splits successfully!")
+                    
+                    # Refresh to show updated data
+                    st.rerun()
+                
+                # Show which splits need processing
+                with st.expander(f"View {len(splits_to_process)} splits needing EDGAR processing"):
+                    missing_df = pd.DataFrame([
+                        {
+                            "Symbol": s["Symbol"],
+                            "Date": s["Date"],
+                            "Company Name": s["Company Name"]
+                        }
+                        for s in splits_to_process
+                    ])
+                    st.dataframe(missing_df, use_container_width=True, hide_index=True)
             
-            with st.expander(f"🔍 {symbol} - {company_name} ({split_date}) - {len(filings)} filing(s)"):
-                for i, filing in enumerate(filings, 1):
-                    st.markdown(f"**Filing {i}: {filing['form']}**")
+            # Prepare DataFrame for display
+            display_data = []
+            for split_info in recent_splits:
+                # Determine if should highlight (within last 3 days)
+                is_recent = split_info["split_date_obj"] >= three_days_ago and split_info["split_date_obj"] <= today
+                
+                display_data.append({
+                    "Date": split_info["Date"],
+                    "Symbol": split_info["Symbol"],
+                    "Company Name": split_info["Company Name"],
+                    "Split Ratio": split_info["Split Ratio"],
+                    "Rounding": split_info["Rounding"],
+                    "_highlight": is_recent
+                })
+            
+            df = pd.DataFrame(display_data)
+            
+            # Remove highlight column before display
+            highlight_mask = df.pop("_highlight")
+            
+            # Display table with highlighting
+            st.subheader(f"Recent Reverse Splits ({len(recent_splits)} total)")
+            st.caption(f"Showing splits from {three_days_ago.strftime('%Y-%m-%d')} onwards. Highlighted rows are within the last 3 days.")
+            
+            # Style the dataframe with better contrast and readability
+            def highlight_recent(row):
+                if row.name < len(highlight_mask) and highlight_mask.iloc[row.name]:
+                    # Highlight recent rows with a subtle blue background and bold black text
+                    return ['background-color: #e3f2fd; color: #000000; font-weight: 600'] * len(row)
+                # Non-highlighted rows: white background with normal black text
+                return ['background-color: #ffffff; color: #212121'] * len(row)
+            
+            # Apply styling with better table display
+            styled_df = df.style.apply(highlight_recent, axis=1).set_properties(**{
+                'text-align': 'left',
+                'padding': '8px'
+            })
+            
+            st.dataframe(styled_df, use_container_width=True, hide_index=True, height=400)
+            
+            # Show EDGAR filings for rows with rounding
+            rounding_splits = [s for s in recent_splits if s["Rounding"] == "Yes" and s["rounding_filings"]]
+            if rounding_splits:
+                st.markdown("---")
+                st.subheader("📄 EDGAR Filings with Rounding Compliance")
+                st.caption("Click to expand and view the actual EDGAR filings that contain rounding language")
+                
+                for split_info in rounding_splits:
+                    symbol = split_info["Symbol"]
+                    company_name = split_info["Company Name"]
+                    split_date = split_info["Date"]
+                    filings = split_info["rounding_filings"]
                     
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        st.write(f"**Filing Date:** {filing['filing_date']}")
-                        st.write(f"**Accession:** {filing['accession']}")
-                    with col2:
-                        if filing['document_url']:
-                            st.markdown(f"[📄 View Filing]({filing['document_url']})")
-                    
-                    # Show rounding text snippet
-                    if filing.get('rounding_text'):
-                        st.markdown("**Relevant Text:**")
-                        st.code(filing['rounding_text'], language=None)
-                    
-                    if i < len(filings):
-                        st.markdown("---")
-    
-    # Summary stats
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Recent Splits", len(recent_splits))
-    with col2:
-        recent_count = sum(1 for s in recent_splits if s["split_date_obj"] >= three_days_ago and s["split_date_obj"] <= today)
-        st.metric("Last 3 Days", recent_count)
-    with col3:
-        rounding_count = sum(1 for s in recent_splits if s["Rounding"] == "Yes")
-        st.metric("With Rounding", rounding_count)
-    
+                    with st.expander(f"🔍 {symbol} - {company_name} ({split_date}) - {len(filings)} filing(s)"):
+                        for i, filing in enumerate(filings, 1):
+                            st.markdown(f"**Filing {i}: {filing['form']}**")
+                            
+                            col1, col2 = st.columns([2, 1])
+                            with col1:
+                                st.write(f"**Filing Date:** {filing['filing_date']}")
+                                st.write(f"**Accession:** {filing['accession']}")
+                            with col2:
+                                if filing['document_url']:
+                                    st.markdown(f"[📄 View Filing]({filing['document_url']})")
+                            
+                            # Show rounding text snippet
+                            if filing.get('rounding_text'):
+                                st.markdown("**Relevant Text:**")
+                                st.code(filing['rounding_text'], language=None)
+                            
+                            if i < len(filings):
+                                st.markdown("---")
+            
+            # Summary stats
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Recent Splits", len(recent_splits))
+            with col2:
+                recent_count = sum(1 for s in recent_splits if s["split_date_obj"] >= three_days_ago and s["split_date_obj"] <= today)
+                st.metric("Last 3 Days", recent_count)
+            with col3:
+                rounding_count = sum(1 for s in recent_splits if s["Rounding"] == "Yes")
+                st.metric("With Rounding", rounding_count)
+            
+    with tab2:
+        st.header("⚠️ Early Warning Signals")
+        st.markdown("""
+        Scanning daily 8-K (Deficiency Notices) and 14A (Proxy Statements) filings for early indications of reverse splits.
+        - **Deficiency Notices**: Companies trading under $1.00 who received a Nasdaq warning.
+        - **Proposals**: Companies asking shareholders to vote on a potential reverse split.
+        """)
+        
+        PROSPECTIVE_COLLECTION = "prospective_splits"
+        try:
+            prospective_collection = db[PROSPECTIVE_COLLECTION]
+            # Fetch all prospective splits, sorted by date (newest first)
+            prospective_splits = list(prospective_collection.find({}).sort("fililing_date", -1))
+            
+            if not prospective_splits:
+                st.info("No early warning signals found yet. Run the scanner to populate this list.")
+            else:
+                st.info(f"Checking {len(prospective_splits)} potential future splits...")
+                
+                start_data = []
+                for p in prospective_splits:
+                    start_data.append({
+                        "Date": p.get("fililing_date"),
+                        "Ticker": p.get("ticker", "UNKNOWN"),
+                        "Company": p.get("company_name"),
+                        "Signal": p.get("signal_type", "").replace("_", " ").title(),
+                        "Form": p.get("form"),
+                        "Details": p.get("details", {}).get("symptom", ""),
+                        "Link": p.get("filing_url")
+                    })
+                
+                p_df = pd.DataFrame(start_data)
+                
+                # Convert Date column to datetime objects for column_config.DateColumn
+                if not p_df.empty and "Date" in p_df.columns:
+                    p_df["Date"] = pd.to_datetime(p_df["Date"])
+
+                # Make the Link column actually clickable
+                st.data_editor(
+                    p_df,
+                    column_config={
+                        "Link": st.column_config.LinkColumn("Filing URL", display_text="View Filing"),
+                        "Date": st.column_config.DateColumn("Filing Date", format="YYYY-MM-DD"),
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+        except Exception as e:
+            st.error(f"Error fetching early warnings: {e}")
+
     # Refresh button
     st.markdown("---")
     col1, col2 = st.columns(2)
