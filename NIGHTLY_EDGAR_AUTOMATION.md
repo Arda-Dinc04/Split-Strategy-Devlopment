@@ -30,7 +30,11 @@ The GitHub Actions workflow now automatically processes EDGAR filings for revers
 
 **Schedule:** Runs every night at 02:15 UTC (can be adjusted)
 
-**Manual Trigger:** Can also be triggered manually from GitHub Actions tab
+**Manual Trigger:** Can also be triggered manually from GitHub Actions tab:
+1. Go to the "Actions" tab in your GitHub repository.
+2. Select "Nightly Split Collector" from the workflows list on the left.
+3. Click the "Run workflow" dropdown button on the right side.
+4. Click the green "Run workflow" button.
 
 ## Required GitHub Secrets
 
