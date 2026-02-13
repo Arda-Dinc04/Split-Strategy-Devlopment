@@ -242,7 +242,7 @@ def push_to_mongodb(df):
         
         # Test connection
         client.admin.command('ping')
-        print("✓ Successfully connected to MongoDB Atlas")
+        print("Successfully connected to MongoDB Atlas")
         
         # Get database and collection
         db = client[MONGODB_DATABASE]
@@ -277,7 +277,7 @@ def push_to_mongodb(df):
             else:
                 updated_count += 1
         
-        print(f"\n✓ Successfully pushed data to MongoDB:")
+        print(f"\nSuccessfully pushed data to MongoDB:")
         print(f"  Database: {MONGODB_DATABASE}")
         print(f"  Collection: {MONGODB_COLLECTION}")
         print(f"  New records inserted: {inserted_count}")
@@ -289,11 +289,11 @@ def push_to_mongodb(df):
         return True
         
     except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        print(f"\n✗ Failed to connect to MongoDB Atlas: {e}")
+        print(f"\nFailed to connect to MongoDB Atlas: {e}")
         print("  Please check your connection string and network access.")
         return False
     except Exception as e:
-        print(f"\n✗ Error pushing data to MongoDB: {e}")
+        print(f"\nError pushing data to MongoDB: {e}")
         return False
 
 

@@ -89,7 +89,7 @@ def main():
     cik_mappings = get_cik_mapping_with_names()
     cik_mapping = cik_mappings.get("ticker", {})
     name_mapping = cik_mappings.get("name", {})
-    print(f"✓ Loaded {len(cik_mapping)} ticker mappings and {len(name_mapping)} company name mappings")
+    print(f"Loaded {len(cik_mapping)} ticker mappings and {len(name_mapping)} company name mappings")
     print()
     
     # Get splits without EDGAR data
@@ -99,7 +99,7 @@ def main():
     print()
     
     if not splits_to_process:
-        print("✅ All splits already have EDGAR data. Nothing to process.")
+        print("All splits already have EDGAR data. Nothing to process.")
         return
     
     # Process each split
@@ -126,14 +126,16 @@ def main():
                 filings_count = result.get("filings_processed", 0)
                 total_filings += filings_count
                 success_count += 1
-                print(f"  ✓ Success - Found {filings_count} EDGAR filing(s)")
+                print(f"  [OK] Success - Found {filings_count} EDGAR filing(s)")
             else:
                 error_count += 1
-                print(f"  ✗ Failed - {result.get('error', 'Unknown error')}")
+                status = result.get("status", "Unknown status")
+                error_msg = result.get("error", status)
+                print(f"  [FAIL] Failed - {error_msg}")
         
         except Exception as e:
             error_count += 1
-            print(f"  ✗ Error: {str(e)[:200]}")
+            print(f"  [FAIL] Error: {str(e)[:200]}")
         
         print()
     
@@ -142,8 +144,8 @@ def main():
     print("BATCH PROCESSING SUMMARY")
     print("=" * 70)
     print(f"Total splits processed: {len(splits_to_process)}")
-    print(f"  ✓ Successful: {success_count}")
-    print(f"  ✗ Errors: {error_count}")
+    print(f"  Successful: {success_count}")
+    print(f"  Errors: {error_count}")
     print(f"Total EDGAR filings found: {total_filings}")
     print(f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)

@@ -194,7 +194,7 @@ def process_reverse_split_with_edgar(split: Dict, cik_mapping: Dict[str, str],
     if not cik and name_mapping:
         cik = search_cik_by_company_name(company_name, name_mapping)
         if cik:
-            print(f"  ✓ Found CIK via company name: {cik}")
+            print(f"  Found CIK via company name: {cik}")
     
     if not cik:
         return {"symbol": symbol, "status": "no_cik", "filings_processed": 0}
