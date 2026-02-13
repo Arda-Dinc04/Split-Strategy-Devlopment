@@ -25,7 +25,15 @@ REQUEST_DELAY = 0.2
 # IMPORTANT: SEC requires a specific User-Agent format: "AppName ContactEmail"
 # However, sometimes a browser-like UA is needed to bypass WAF, while still including contact info.
 default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 (Split Strategy Analysis contact@splitstrategy.com)"
-user_agent = os.environ.get("SEC_USER_AGENT", default_ua)
+env_ua = os.environ.get("SEC_USER_AGENT")
+
+# If env var is set but doesn't look like a browser (missing Mozilla), force hybrid format
+if env_ua and "Mozilla" not in env_ua:
+    # Extract email if possible, or use default
+    contact = env_ua
+    user_agent = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 ({contact})"
+else:
+    user_agent = env_ua or default_ua
 
 HEADERS = {
     "User-Agent": user_agent,
