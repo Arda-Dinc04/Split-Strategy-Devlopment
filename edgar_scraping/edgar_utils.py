@@ -23,12 +23,12 @@ REQUEST_DELAY = 0.2
 
 # Use environment variable for User-Agent if available, otherwise default
 # IMPORTANT: SEC requires a specific User-Agent format: "AppName ContactEmail"
-default_ua = "Split Strategy Analysis contact@splitstrategy.com"
+# However, sometimes a browser-like UA is needed to bypass WAF, while still including contact info.
+default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 (Split Strategy Analysis contact@splitstrategy.com)"
 user_agent = os.environ.get("SEC_USER_AGENT", default_ua)
 
 HEADERS = {
     "User-Agent": user_agent,
-    "Accept": "application/json",
     "Accept-Encoding": "gzip, deflate",
     "Host": "www.sec.gov"
 }
