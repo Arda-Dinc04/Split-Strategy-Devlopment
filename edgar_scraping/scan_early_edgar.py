@@ -106,6 +106,8 @@ def fetch_daily_filings(date_obj: datetime) -> List[Dict]:
     url = get_daily_index_url(date_obj)
     print(f"Fetching Daily Index: {url}")
     
+    # For daily index, we need to respect the headers but the Host might differ
+    # The default HEADERS has Host: www.sec.gov which fits here
     try:
         response = requests.get(url, headers=HEADERS)
         if response.status_code == 404:
@@ -181,6 +183,7 @@ def process_filing(filing: Dict) -> Optional[Dict]:
     
     try:
         time.sleep(0.1)
+        # Filings are also on www.sec.gov/Archives
         resp = requests.get(full_url, headers=HEADERS)
         resp.raise_for_status()
         

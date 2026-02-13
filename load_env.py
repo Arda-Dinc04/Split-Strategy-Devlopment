@@ -14,8 +14,8 @@ try:
         load_dotenv(env_path)
         print(f"✓ Loaded environment variables from {env_path}")
     else:
-        print(f"⚠️  No .env file found at {env_path}")
-        print("   Please create .env file from .env.example template")
+        # No .env file found, assuming environment variables are set externally
+        pass
 except ImportError:
     # python-dotenv not installed, skip loading
     pass

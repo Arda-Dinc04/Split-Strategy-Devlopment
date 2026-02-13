@@ -16,11 +16,21 @@ SEC_BASE_URL = "https://data.sec.gov"
 SEC_ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data"
 COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
+import os
+
 # Rate limiting
 REQUEST_DELAY = 0.2  
+
+# Use environment variable for User-Agent if available, otherwise default
+# IMPORTANT: SEC requires a specific User-Agent format: "AppName ContactEmail"
+default_ua = "Split Strategy Analysis contact@splitstrategy.com"
+user_agent = os.environ.get("SEC_USER_AGENT", default_ua)
+
 HEADERS = {
-    "User-Agent": "Split Strategy Analysis contact@splitstrategy.com",
-    "Accept": "application/json"
+    "User-Agent": user_agent,
+    "Accept": "application/json",
+    "Accept-Encoding": "gzip, deflate",
+    "Host": "www.sec.gov"
 }
 
 # Forms to include

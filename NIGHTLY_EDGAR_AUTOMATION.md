@@ -43,6 +43,8 @@ Make sure these secrets are set in your GitHub repository settings:
 - `MONGODB_URI` - MongoDB connection string
 - `MONGODB_DATABASE` - Database name (default: "split_strategy")
 - `MONGODB_COLLECTION` - Collection name (default: "reverse_splits")
+- `OPENAI_API_KEY` - OpenAI API Key for Early Warning Scanner
+- `SEC_USER_AGENT` (Optional but Recommended) - User-Agent for SEC EDGAR requests. Format: `AppName ContactEmail`. Default: `Split Strategy Analysis contact@splitstrategy.com`. Setting this helps avoid 403 Forbidden errors if the default is blocked.
 
 ## How It Works
 
