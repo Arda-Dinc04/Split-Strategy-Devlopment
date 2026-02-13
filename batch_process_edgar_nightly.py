@@ -10,7 +10,8 @@ from process_reverse_splits_edgar import (
     process_reverse_split_with_edgar,
     check_already_processed_reverse_splits
 )
-from edgar_workflow_complete import get_cik_mapping_with_names
+from edgar_scraping.edgar_utils import get_cik_mapping_with_names, search_cik_by_company_name
+# from edgar_workflow_complete import get_cik_mapping_with_names # Deprecated in favor of utility
 from datetime import datetime
 
 # MongoDB Configuration

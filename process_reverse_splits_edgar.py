@@ -191,6 +191,14 @@ def process_reverse_split_with_edgar(split: Dict, cik_mapping: Dict[str, str],
     
     # Get CIK - try ticker first, then company name
     cik = cik_mapping.get(symbol.upper())
+    
+    # Try stripping suffixes if not found (e.g., TSORF -> TSOR)
+    if not cik and len(symbol) > 4:
+        if symbol.endswith("F"):
+             cik = cik_mapping.get(symbol[:-1])
+        elif symbol.endswith("Y"):
+             cik = cik_mapping.get(symbol[:-1])
+
     if not cik and name_mapping:
         cik = search_cik_by_company_name(company_name, name_mapping)
         if cik:

@@ -49,18 +49,88 @@ def get_cik_mapping() -> Dict[str, str]:
         response.raise_for_status()
         data = response.json()
         
-        # Convert to ticker 
+        # Convert to ticker mapping
         mapping = {}
         for entry in data.values():
             ticker = entry.get("ticker", "").upper()
             cik = str(entry.get("cik_str", "")).zfill(10)
             if ticker and cik:
                 mapping[ticker] = cik
+                
+        # Add stripped versions for OTC/Foreign tickers (e.g. TOCKF -> TOCK)
+        # This helps match tickers that might be listed with a suffix in our DB but not in SEC
+        for ticker, cik in list(mapping.items()):
+            if len(ticker) > 4 and ticker.endswith("F"): # Common OTC Foreign suffix
+                 stripped = ticker[:-1]
+                 if stripped not in mapping:
+                     mapping[stripped] = cik
+            elif len(ticker) > 4 and ticker.endswith("Y"): # Common ADR suffix
+                 stripped = ticker[:-1]
+                 if stripped not in mapping:
+                     mapping[stripped] = cik
         
         return mapping
     except Exception as e:
         print(f"Error fetching CIK mapping: {e}")
         return {}
+
+
+
+def get_cik_mapping_with_names() -> Dict[str, Dict[str, str]]:
+    """Fetch CIK mapping with both ticker and company name lookups"""
+    try:
+        response = requests.get(COMPANY_TICKERS_URL, headers=HEADERS)
+        response.raise_for_status()
+        data = response.json()
+        
+        ticker_mapping = {}
+        name_mapping = {}
+        
+        for entry in data.values():
+            ticker = entry.get("ticker", "").upper()
+            title = entry.get("title", "").upper()
+            cik = str(entry.get("cik_str", "")).zfill(10)
+            
+            if ticker and cik:
+                ticker_mapping[ticker] = cik
+            
+            if title and cik:
+                # Store normalized company name -> CIK
+                clean_title = title
+                for suffix in [" INC", " INC.", " CORPORATION", " CORP", " CORP.", " LLC", " LTD", " LTD.", " COMPANY", " CO", " CO."]:
+                    if clean_title.endswith(suffix):
+                        clean_title = clean_title[:-len(suffix)].strip()
+                if clean_title:
+                    name_mapping[clean_title] = cik
+        
+        return {"ticker": ticker_mapping, "name": name_mapping}
+    except Exception as e:
+        print(f"Error fetching CIK mapping: {e}")
+        return {"ticker": {}, "name": {}}
+
+
+def search_cik_by_company_name(company_name: str, name_mapping: Dict[str, str] = None) -> Optional[str]:
+    """Fallback: Search for CIK by company name"""
+    if not company_name:
+        return None
+    
+    # Clean company name
+    clean_name = company_name.strip().upper()
+    # Remove common suffixes for better matching
+    for suffix in [" INC", " INC.", " CORPORATION", " CORP", " CORP.", " LLC", " LTD", " LTD.", " COMPANY", " CO", " CO."]:
+        if clean_name.endswith(suffix):
+            clean_name = clean_name[:-len(suffix)].strip()
+    
+    # Try direct lookup if mapping provided
+    if name_mapping:
+        if clean_name in name_mapping:
+            return name_mapping[clean_name]
+        # Try partial match
+        for mapped_name, cik in name_mapping.items():
+            if clean_name in mapped_name or mapped_name in clean_name:
+                return cik
+    
+    return None
 
 
 def normalize_cik(cik: Union[str, int]) -> str:
