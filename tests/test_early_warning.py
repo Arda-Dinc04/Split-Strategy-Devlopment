@@ -3,10 +3,12 @@ import unittest
 import sys
 import os
 
-# Add parent directory to path to import modules
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add src directory to path (2 levels up from tests/)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_path = os.path.join(os.path.dirname(current_dir), 'src')
+sys.path.append(src_path)
 
-from edgar_scraping.edgar_utils import (
+from split_strategy.edgar.parsing import (
     check_compliance_flag,
     check_split_proposal_flag,
     extract_reverse_split_ratio,

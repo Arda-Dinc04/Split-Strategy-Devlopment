@@ -20,6 +20,7 @@ import re
 import time
 import json
 import argparse
+import concurrent.futures
 from datetime import datetime, timedelta, timezone
 from pymongo import MongoClient
 from typing import List, Dict, Optional
@@ -106,10 +107,12 @@ def fetch_daily_filings(date_obj: datetime) -> List[Dict]:
     url = get_daily_index_url(date_obj)
     print(f"Fetching Daily Index: {url}")
     
+    # For daily index, we need to respect the headers but the Host might differ
+    # The default HEADERS has Host: www.sec.gov which fits here
     try:
         response = requests.get(url, headers=HEADERS)
-        if response.status_code == 404:
-            print("  No index found (weekend/holiday?)")
+        if response.status_code in [403, 404]:
+            print("  No index found (weekend/holiday? or 403 Forbidden)")
             return []
         response.raise_for_status()
         
@@ -164,7 +167,7 @@ def analyze_with_llm(text: str, company: str, filing_date: str) -> Dict:
         prompt = get_analysis_prompt(company, context, filing_date)
         
         response = client.chat.completions.create(
-            model="gpt-4-turbo-preview", 
+            model="gpt-4o-mini", 
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -181,6 +184,7 @@ def process_filing(filing: Dict) -> Optional[Dict]:
     
     try:
         time.sleep(0.1)
+        # Filings are also on www.sec.gov/Archives
         resp = requests.get(full_url, headers=HEADERS)
         resp.raise_for_status()
         
@@ -272,18 +276,32 @@ def main():
         db = client[MONGODB_DATABASE]
         collection = db[EARLY_EDGAR_COLLECTION]
     
-    for i, filing in enumerate(filings):
-        print(f"Scanning {i+1}/{len(filings)}: {filing['company_name']}...", end="\r")
-        hit = process_filing(filing)
-        if hit:
-            hit['ticker'] = resolve_ticker(hit['cik'])
-            hits.append(hit)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # Submit all tasks
+        future_to_filing = {executor.submit(process_filing, filing): filing for filing in filings}
+        
+        count = 0
+        total = len(filings)
+        
+        for future in concurrent.futures.as_completed(future_to_filing):
+            count += 1
+            filing = future_to_filing[future]
+            # Simple progress indicator (may overlap with thread prints, but functional)
+            print(f"Scanning {count}/{total}: {filing['company_name']}...      ", end="\r")
             
-            # Save immediately
-            if MONGODB_URI:
-                query = {"cik": hit["cik"], "filing_date": hit["filing_date"]}
-                collection.update_one(query, {"$set": hit}, upsert=True)
-                print(f"[SAVED] {hit['ticker']} - {hit['summary']}")
+            try:
+                hit = future.result()
+                if hit:
+                    hit['ticker'] = resolve_ticker(hit['cik'])
+                    hits.append(hit)
+                    
+                    # Save immediately (thread-safe enough for MongoDB update_one)
+                    if MONGODB_URI:
+                        query = {"cik": hit["cik"], "filing_date": hit["filing_date"]}
+                        collection.update_one(query, {"$set": hit}, upsert=True)
+                        print(f"\n[SAVED] {hit['ticker']} - {hit['summary']}")
+            except Exception as e:
+                print(f"\nError processing {filing['company_name']}: {e}")
     
     print(f"\nScan Complete. Found {len(hits)} confirmed splits.")
 

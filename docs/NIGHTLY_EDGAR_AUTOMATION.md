@@ -30,7 +30,11 @@ The GitHub Actions workflow now automatically processes EDGAR filings for revers
 
 **Schedule:** Runs every night at 02:15 UTC (can be adjusted)
 
-**Manual Trigger:** Can also be triggered manually from GitHub Actions tab
+**Manual Trigger:** Can also be triggered manually from GitHub Actions tab:
+1. Go to the "Actions" tab in your GitHub repository.
+2. Select "Nightly Split Collector" from the workflows list on the left.
+3. Click the "Run workflow" dropdown button on the right side.
+4. Click the green "Run workflow" button.
 
 ## Required GitHub Secrets
 
@@ -39,6 +43,8 @@ Make sure these secrets are set in your GitHub repository settings:
 - `MONGODB_URI` - MongoDB connection string
 - `MONGODB_DATABASE` - Database name (default: "split_strategy")
 - `MONGODB_COLLECTION` - Collection name (default: "reverse_splits")
+- `OPENAI_API_KEY` - OpenAI API Key for Early Warning Scanner
+- `SEC_USER_AGENT` (Optional but Recommended) - User-Agent for SEC EDGAR requests. Format: `AppName ContactEmail`. Default: `Split Strategy Analysis contact@splitstrategy.com`. Setting this helps avoid 403 Forbidden errors if the default is blocked.
 
 ## How It Works
 

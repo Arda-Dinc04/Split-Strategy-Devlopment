@@ -1,76 +1,37 @@
 """
-Process reverse_splits collection and store EDGAR filings in reverse_splits_edgar
-Similar to edgar_workflow_complete but for reverse_splits collection
+High-level EDGAR processing workflow.
 """
-
-import requests
-import re
-import json
-import math
-from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Dict
-from pymongo import MongoClient
-import time
+from datetime import datetime, timezone
+from typing import Dict, Optional, List
 from bs4 import BeautifulSoup
-import os
-from bson import ObjectId
+import math
+import re
 
-# Import shared functions from edgar_workflow_complete
-from edgar_workflow_complete import (
-    get_cik_mapping_with_names,
-    search_cik_by_company_name,
-    normalize_cik,
-    get_company_filings,
-    get_date_window,
-    download_filing_text,
-    extract_reverse_split_ratio,
-    extract_announcement_date,
-    extract_effective_date,
-    check_compliance_flag,
-    check_financing_flag,
-    check_unregistered_sales_flag,
-    check_rounding_up_flag,
-    check_items,
-    parse_date as parse_date_util,
-    parse_sa_ratio,
-    score_filing
+from bs4 import BeautifulSoup
+
+from ..database import get_collection, get_db
+from ..config import SEC_ARCHIVES_URL, REVERSE_SPLITS_COLLECTION, EDGAR_COLLECTION, MONGODB_DATABASE
+
+# Removed incorrect import from .config
+
+from .client import download_filing_text, get_company_filings
+from .parsing import (
+    check_items, extract_reverse_split_ratio, extract_announcement_date,
+    extract_effective_date, check_compliance_flag, check_financing_flag,
+    check_unregistered_sales_flag, check_rounding_up_flag, TARGET_FORMS, CONTEXT_FORMS
 )
+from .scoring import score_filing, parse_sa_ratio
+from .utils import normalize_cik, parse_date, get_date_window, search_cik_by_company_name
 
-# MongoDB Configuration
-MONGODB_URI = os.environ.get("MONGODB_URI")
-if not MONGODB_URI:
-    raise ValueError("MONGODB_URI environment variable is required. Please set it in your .env file or environment.")
-MONGODB_DATABASE = "split_strategy"
-REVERSE_SPLITS_COLLECTION = "reverse_splits"
-EDGAR_COLLECTION = "reverse_splits_edgar"
-
-# SEC API Configuration
-SEC_BASE_URL = "https://data.sec.gov"
-SEC_ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data"
-REQUEST_DELAY = 0.2
-HEADERS = {
-    "User-Agent": "Split Strategy Analysis contact@splitstrategy.com",
-    "Accept": "application/json"
-}
-
-# Forms to include
-TARGET_FORMS = ["8-K", "6-K", "DEF 14A", "PRE 14A", "DEFA14A", "14C", "PRE 14C", 
-                "S-3", "S-1", "424B5", "424B3", "FWP"]
-CONTEXT_FORMS = ["10-Q", "10-K", "20-F"]
-TARGET_ITEMS = ["3.01", "5.03", "8.01", "1.01", "3.02"]
-
+# Re-import SEC_ARCHIVES_URL properly
+# It seems I made a mistake in the import above. relative import from ..config
+from ..config import SEC_ARCHIVES_URL
 
 def check_already_processed_reverse_splits(reverse_splits_id: str) -> bool:
     """Check if this split already has EDGAR filings in reverse_splits_edgar"""
-    client = MongoClient(MONGODB_URI)
-    db = client[MONGODB_DATABASE]
-    edgar_collection = db[EDGAR_COLLECTION]
-    
+    edgar_collection = get_collection(EDGAR_COLLECTION)
     count = edgar_collection.count_documents({"reverse_splits_id": reverse_splits_id})
-    
-    client.close()
     return count > 0
-
 
 def parse_and_score_filing(cik: str, ticker: str, filing: Dict, split_date: str, 
                           sa_ratio: Optional[tuple], sa_effective_date: Optional[datetime],
@@ -136,14 +97,14 @@ def parse_and_score_filing(cik: str, ticker: str, filing: Dict, split_date: str,
     if announce_date:
         result["announce_date"] = announce_date
     if effective_data:
-        result["effective_date"] = effective_data.get("date")
-        result["effective_time_text"] = effective_data.get("time")
+        result["effective_date"] = effective_data.get("effective_date")
+        result["effective_time_text"] = effective_data.get("effective_time_text")
     if ratio_data:
-        result["ratio_num"] = ratio_data.get("num")
-        result["ratio_den"] = ratio_data.get("den")
-        if ratio_data.get("num") and ratio_data.get("den"):
-            num = ratio_data["num"]
-            den = ratio_data["den"]
+        result["ratio_num"] = ratio_data.get("ratio_num")
+        result["ratio_den"] = ratio_data.get("ratio_den")
+        if ratio_data.get("ratio_num") and ratio_data.get("ratio_den"):
+            num = ratio_data["ratio_num"]
+            den = ratio_data["ratio_den"]
             if num > 0 and den > num:  # Reverse split check
                 result["log_ratio"] = round(math.log(den / num), 4)
     
@@ -191,6 +152,14 @@ def process_reverse_split_with_edgar(split: Dict, cik_mapping: Dict[str, str],
     
     # Get CIK - try ticker first, then company name
     cik = cik_mapping.get(symbol.upper())
+    
+    # Try stripping suffixes if not found (e.g., TSORF -> TSOR)
+    if not cik and len(symbol) > 4:
+        if symbol.endswith("F"):
+             cik = cik_mapping.get(symbol[:-1])
+        elif symbol.endswith("Y"):
+             cik = cik_mapping.get(symbol[:-1])
+
     if not cik and name_mapping:
         cik = search_cik_by_company_name(company_name, name_mapping)
         if cik:
@@ -203,7 +172,7 @@ def process_reverse_split_with_edgar(split: Dict, cik_mapping: Dict[str, str],
     sa_ratio = parse_sa_ratio(split_ratio_str)
     sa_effective_date = None
     if split_date:
-        sa_date_parsed = parse_date_util(split_date)
+        sa_date_parsed = parse_date(split_date)
         if sa_date_parsed:
             sa_effective_date = datetime.strptime(sa_date_parsed, "%Y-%m-%d")
     
@@ -281,9 +250,7 @@ def process_reverse_split_with_edgar(split: Dict, cik_mapping: Dict[str, str],
     
     # Save to MongoDB (reverse_splits_edgar collection)
     if results:
-        client = MongoClient(MONGODB_URI)
-        db = client[MONGODB_DATABASE]
-        collection = db[EDGAR_COLLECTION]
+        collection = get_collection(EDGAR_COLLECTION)
         
         inserted = 0
         for result in results:
@@ -298,11 +265,8 @@ def process_reverse_split_with_edgar(split: Dict, cik_mapping: Dict[str, str],
         except:
             pass
         
-        client.close()
-    
     return {
         "symbol": symbol,
         "status": "success",
         "filings_processed": len(results)
     }
-

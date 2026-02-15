@@ -14,6 +14,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
@@ -126,11 +127,23 @@ def get_hedgefollow_data():
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
         
+        # Set page load timeout to 4 minutes (240 seconds) as requested
+        driver.set_page_load_timeout(240)
+        
         # URL of the webpage to scrape
         url = "https://hedgefollow.com/upcoming-stock-splits.php"
         
-        # Open the webpage
-        driver.get(url)
+        # Open the webpage with error handling
+        try:
+            driver.get(url)
+        except TimeoutException:
+            print("  Timeout loading HedgeFollow.com after 240 seconds")
+            driver.quit()
+            return pd.DataFrame(data, columns=['Date', 'Symbol', 'Company Name', 'Split Ratio'])
+        except Exception as e:
+            print(f"  Error loading Page: {e}")
+            driver.quit()
+            return pd.DataFrame(data, columns=['Date', 'Symbol', 'Company Name', 'Split Ratio'])
         
         # Wait for the table to be present and visible
         wait = WebDriverWait(driver, 30)
@@ -229,7 +242,7 @@ def push_to_mongodb(df):
         
         # Test connection
         client.admin.command('ping')
-        print("✓ Successfully connected to MongoDB Atlas")
+        print("Successfully connected to MongoDB Atlas")
         
         # Get database and collection
         db = client[MONGODB_DATABASE]
@@ -264,7 +277,7 @@ def push_to_mongodb(df):
             else:
                 updated_count += 1
         
-        print(f"\n✓ Successfully pushed data to MongoDB:")
+        print(f"\nSuccessfully pushed data to MongoDB:")
         print(f"  Database: {MONGODB_DATABASE}")
         print(f"  Collection: {MONGODB_COLLECTION}")
         print(f"  New records inserted: {inserted_count}")
@@ -276,16 +289,17 @@ def push_to_mongodb(df):
         return True
         
     except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        print(f"\n✗ Failed to connect to MongoDB Atlas: {e}")
+        print(f"\nFailed to connect to MongoDB Atlas: {e}")
         print("  Please check your connection string and network access.")
         return False
     except Exception as e:
-        print(f"\n✗ Error pushing data to MongoDB: {e}")
+        print(f"\nError pushing data to MongoDB: {e}")
         return False
 
 
 def main():
     """Main function to collect data from all sources and save combined result"""
+    print("=" * 70)
     print("=" * 70)
     print("Stock Split Data Collector - Starting data collection")
     print("=" * 70)
@@ -294,19 +308,28 @@ def main():
     dataframes = []
     
     # 1. StockAnalysis.com
-    df_stockanalysis = get_stockanalysis_data()
-    if not df_stockanalysis.empty:
-        dataframes.append(df_stockanalysis)
+    try:
+        df_stockanalysis = get_stockanalysis_data()
+        if not df_stockanalysis.empty:
+            dataframes.append(df_stockanalysis)
+    except Exception as e:
+        print(f"Critical Error in StockAnalysis scraper: {e}")
     
     # 2. TipRanks.com
-    df_tipranks = get_tipranks_data()
-    if not df_tipranks.empty:
-        dataframes.append(df_tipranks)
+    try:
+        df_tipranks = get_tipranks_data()
+        if not df_tipranks.empty:
+            dataframes.append(df_tipranks)
+    except Exception as e:
+        print(f"Critical Error in TipRanks scraper: {e}")
     
     # 3. HedgeFollow.com
-    df_hedgefollow = get_hedgefollow_data()
-    if not df_hedgefollow.empty:
-        dataframes.append(df_hedgefollow)
+    try:
+        df_hedgefollow = get_hedgefollow_data()
+        if not df_hedgefollow.empty:
+            dataframes.append(df_hedgefollow)
+    except Exception as e:
+        print(f"Critical Error in HedgeFollow scraper: {e}")
     
     # Combine and deduplicate
     if not dataframes:
