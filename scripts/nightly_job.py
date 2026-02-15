@@ -4,58 +4,28 @@ Batch process reverse splits without EDGAR data
 Run nightly via GitHub Actions to automatically process new splits
 """
 
+import sys
 import os
-from pymongo import MongoClient
-from process_reverse_splits_edgar import (
-    process_reverse_split_with_edgar,
-    check_already_processed_reverse_splits
-)
-from edgar_scraping.edgar_utils import get_cik_mapping_with_names, search_cik_by_company_name
-# from edgar_workflow_complete import get_cik_mapping_with_names # Deprecated in favor of utility
 from datetime import datetime
+from pathlib import Path
 
-# MongoDB Configuration
-MONGODB_URI = os.environ.get("MONGODB_URI")
-if not MONGODB_URI:
-    raise ValueError("MONGODB_URI environment variable is required")
+# Add src to path
+current_dir = Path(__file__).resolve().parent
+src_path = current_dir.parent / 'src'
+sys.path.append(str(src_path))
 
-MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "split_strategy")
-REVERSE_COLLECTION = "reverse_splits"
-EDGAR_COLLECTION = "reverse_splits_edgar"
-
-
-def parse_date(date_str):
-    """Parse date string in various formats"""
-    if not date_str:
-        return None
-    
-    formats = [
-        "%m/%d/%Y",
-        "%Y-%m-%d",
-        "%b %d, %Y",
-        "%B %d, %Y",
-        "%d-%m-%Y",
-        "%Y/%m/%d"
-    ]
-    
-    for fmt in formats:
-        try:
-            return datetime.strptime(date_str.strip(), fmt)
-        except ValueError:
-            continue
-    
-    return None
-
+from split_strategy.database import get_collection, REVERSE_SPLITS_COLLECTION, EDGAR_COLLECTION
+from split_strategy.edgar.processing import process_reverse_split_with_edgar
+from split_strategy.edgar.client import get_cik_mapping_with_names
 
 def get_splits_without_edgar(limit=None):
     """Get all reverse splits that don't have EDGAR data yet"""
-    client = MongoClient(MONGODB_URI)
-    db = client[MONGODB_DATABASE]
-    reverse_collection = db[REVERSE_COLLECTION]
-    edgar_collection = db[EDGAR_COLLECTION]
+    reverse_collection = get_collection(REVERSE_SPLITS_COLLECTION)
+    edgar_collection = get_collection(EDGAR_COLLECTION)
     
     # Get all reverse splits
-    all_splits = list(reverse_collection.find({}))
+    # Sort by date descending to process recent ones first
+    all_splits = list(reverse_collection.find({}).sort("Date", -1))
     
     # Filter to only those without EDGAR data
     splits_to_process = []
@@ -67,8 +37,6 @@ def get_splits_without_edgar(limit=None):
         count = edgar_collection.count_documents({"reverse_splits_id": reverse_splits_id})
         if count == 0:
             splits_to_process.append(split)
-    
-    client.close()
     
     # Limit if specified (for testing)
     if limit:
@@ -123,14 +91,16 @@ def main():
                 skip_existing=True
             )
             
-            if result.get("status") == "success":
+            status = result.get("status")
+            if status == "success":
                 filings_count = result.get("filings_processed", 0)
                 total_filings += filings_count
                 success_count += 1
                 print(f"  [OK] Success - Found {filings_count} EDGAR filing(s)")
+            elif status == "already_processed":
+                print(f"  [SKIP] Already processed")
             else:
                 error_count += 1
-                status = result.get("status", "Unknown status")
                 error_msg = result.get("error", status)
                 print(f"  [FAIL] Failed - {error_msg}")
         
@@ -154,4 +124,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
