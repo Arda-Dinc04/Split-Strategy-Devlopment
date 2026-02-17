@@ -9,7 +9,7 @@
 
 2. **Run the Streamlit app:**
    ```bash
-   streamlit run streamlit_app.py
+   streamlit run streamlit_entry.py
    ```
 
 3. **Access the dashboard:**
@@ -35,7 +35,7 @@
 4. **Click "New app"** and configure:
    - **Repository**: Select `Arda-Dinc04/Split-Strategy-Devlopment`
    - **Branch**: `main`
-   - **Main file path**: `streamlit_app.py`
+   - **Main file path**: `streamlit_entry.py`
    - **App URL**: Choose a custom name (e.g., `split-strategy-dashboard`)
 
 5. **Add secrets** (REQUIRED):
