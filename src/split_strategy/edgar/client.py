@@ -109,34 +109,56 @@ def fetch_daily_filings(date_obj, target_forms=None) -> list:
     url = get_daily_index_url(date_obj)
     print(f"Fetching Daily Index: {url}")
     
-    try:
-        response = requests.get(url, headers=HEADERS)
-        if response.status_code in [403, 404]:
-            print("  No index found (weekend/holiday? or 403 Forbidden)")
-            return []
-        response.raise_for_status()
-        
-        lines = response.text.splitlines()
-        filings = []
-        
-        start_parsing = False
-        for line in lines:
-            if "---" in line:
-                start_parsing = True
-                continue
-            if not start_parsing:
-                continue
+    max_retries = 5
+    base_delay = 1.0
+    
+    for attempt in range(max_retries):
+        try:
+            time.sleep(base_delay * (attempt + 1) * 0.5)
+            response = requests.get(url, headers=HEADERS)
             
-            entry = parse_idx_line(line)
-            if entry:
-                if target_forms:
-                     if entry["form"] in target_forms:
+            if response.status_code in [404, 403]:
+                # 403 can sometimes be a ban, but usually 404/403 means no file yet (weekend/holiday)
+                print(f"  No index found (Status {response.status_code})")
+                return []
+                
+            if response.status_code == 429 or response.status_code >= 500:
+                print(f"  [Attempt {attempt+1}/{max_retries}] SEC returned {response.status_code} for index, backing off...")
+                if attempt == max_retries - 1:
+                    response.raise_for_status()
+                time.sleep(base_delay * (2 ** attempt))
+                continue
+                
+            response.raise_for_status()
+            
+            lines = response.text.splitlines()
+            filings = []
+            
+            start_parsing = False
+            for line in lines:
+                if "---" in line:
+                    start_parsing = True
+                    continue
+                if not start_parsing:
+                    continue
+                
+                entry = parse_idx_line(line)
+                if entry:
+                    if target_forms:
+                         if entry["form"] in target_forms:
+                            filings.append(entry)
+                    else:
                         filings.append(entry)
-                else:
-                    filings.append(entry)
-        
-        return filings
-    except Exception as e:
-        print(f"Error fetching index: {e}")
-        return []
+            
+            return filings
+            
+        except requests.exceptions.HTTPError as e:
+            if attempt == max_retries - 1:
+                print(f"Error fetching index after {max_retries} attempts: {e}")
+                return []
+        except Exception as e:
+            print(f"Unexpected error fetching index: {e}")
+            return []
+            
+    return []
 

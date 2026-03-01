@@ -11,6 +11,7 @@ import concurrent.futures
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+import csv
 
 # Add src to path
 current_dir = Path(__file__).resolve().parent
@@ -51,69 +52,79 @@ def resolve_ticker(cik: str) -> str:
     return CACHE_CIK_TO_TICKER.get(normalized_cik, "UNKNOWN")
 
 def process_filing(filing: dict) -> dict:
-    """Analyze a single filing"""
+    """Analyze a single filing with automated retry logic."""
     full_url = f"https://www.sec.gov/Archives/{filing['filename']}"
     
-    try:
-        # Rate limiting handled by client/requests usually, but adding small safety here
-        time.sleep(0.1) 
-        
-        # Filings are also on www.sec.gov/Archives
-        # We can use requests directly here or client.download_filing_text
-        # Since we have the partial filename (e.g. edgar/data/...), we can construct URL
-        
-        resp = requests.get(full_url, headers=HEADERS)
-        resp.raise_for_status()
-        
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        text = soup.get_text(separator=' ', strip=True)
-        
-        # 1. Quick Keyword Filter
-        if not check_keywords_extensive(text):
-            return None
+    max_retries = 5
+    base_delay = 1.0
+    
+    for attempt in range(max_retries):
+        try:
+            # Add some jitter to avoid synchronized hammer
+            time.sleep(base_delay * (attempt + 1) * 0.5) 
             
-        print(f"  > Keyword match found for {filing['company_name']}!")
-        
-        # 2. LLM Analysis
-        analysis = analyze_with_llm(
-            text, 
-            filing['company_name'], 
-            filing['date_filed'],
-            openai_api_key=OPENAI_API_KEY
-        )
-        
-        if not analysis.get("is_reverse_split", False):
-            print("    LLM says: Not a reverse split.")
-            return None
-        
-        # Filter out past splits based on confidence or explicit logic
-        if analysis.get("is_future_split") is False:
-             print(f"    LLM says: Past split (is_future_split=False). Skipping.")
-             return None
+            resp = requests.get(full_url, headers=HEADERS)
+            if resp.status_code == 429 or resp.status_code >= 500:
+                print(f"  [Attempt {attempt+1}/{max_retries}] SEC returned {resp.status_code}, backing off...")
+                if attempt == max_retries - 1:
+                    resp.raise_for_status() # Give up on last try
+                time.sleep(base_delay * (2 ** attempt)) # Exponential backoff
+                continue
+            
+            resp.raise_for_status()
+            
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            text = soup.get_text(separator=' ', strip=True)
+            
+            # 1. Quick Keyword Filter
+            if not check_keywords_extensive(text):
+                return None
+                
+            print(f"  > Keyword match found for {filing['company_name']}!")
+            
+            # 2. LLM Analysis
+            analysis = analyze_with_llm(
+                text, 
+                filing['company_name'], 
+                filing['date_filed'],
+                openai_api_key=OPENAI_API_KEY
+            )
+            
+            if not analysis.get("is_reverse_split", False):
+                print("    LLM says: Not a reverse split.")
+                return None
+            
+            # Filter out past splits based on confidence or explicit logic
+            if analysis.get("is_future_split") is False:
+                 print(f"    LLM says: Past split (is_future_split=False). Skipping.")
+                 return None
 
-        if analysis.get("confidence") == "Low" and "already effective" in analysis.get("summary", "").lower():
-             print("    LLM says: Past split (Low Confidence). Skipping.")
-             return None
+            if analysis.get("confidence") == "Low" and "already effective" in analysis.get("summary", "").lower():
+                 print("    LLM says: Past split (Low Confidence). Skipping.")
+                 return None
 
-        print(f"    Confirmed! Date: {analysis.get('effective_date')}, Ratio: {analysis.get('ratio')}")
-        
-        return {
-            "ticker": "UNKNOWN", # Resolved later
-            "cik": normalize_cik(filing["cik"]),
-            "company_name": filing["company_name"],
-            "filing_date": filing["date_filed"],
-            "form": filing["form"],
-            "filing_url": full_url,
-            "effective_date": analysis.get("effective_date"),
-            "ratio": analysis.get("ratio"),
-            "rounding_up": analysis.get("rounding_up"),
-            "summary": analysis.get("summary"),
-            "confidence": analysis.get("confidence"),
-            "found_at": datetime.now(timezone.utc)
-        }
+            print(f"    Confirmed! Date: {analysis.get('effective_date')}, Ratio: {analysis.get('ratio')}")
+            
+            return {
+                "ticker": "UNKNOWN", # Resolved later
+                "cik": normalize_cik(filing["cik"]),
+                "company_name": filing["company_name"],
+                "filing_date": filing["date_filed"],
+                "form": filing["form"],
+                "filing_url": full_url,
+                "effective_date": analysis.get("effective_date"),
+                "ratio": analysis.get("ratio"),
+                "rounding_up": analysis.get("rounding_up"),
+                "summary": analysis.get("summary"),
+                "confidence": analysis.get("confidence"),
+                "found_at": datetime.now(timezone.utc).isoformat()
+            }
 
-    except Exception as e:
-        print(f"Error processing {filing['filename']}: {e}")
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"Error processing {filing['filename']} after {max_retries} attempts: {e}")
+            else:
+                pass # Will retry
     
     return None
 
@@ -142,16 +153,36 @@ def main():
     
     hits = []
     
-    # Process
+    # Setup MongoDB Collection
     collection = None
     if MONGODB_URI:
-        collection = get_collection(EARLY_WARNINGS_COLLECTION)
+        client = MongoClient(MONGODB_URI)
+        db = client[MONGODB_DATABASE]
+        collection = db[EARLY_WARNINGS_COLLECTION]
+        print(f"Connected to MongoDB: {MONGODB_DATABASE}.{EARLY_WARNINGS_COLLECTION}")
     else:
-        print("Warning: MONGODB_URI not set. Results will not be saved to DB.")
+        print("Warning: MONGODB_URI not found. Not saving to database.")
+    
+    # Process
+    csv_path = current_dir.parent / 'DATA' / 'split_performance.csv'
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_exists = csv_path.exists()
+    
+    # Let's fix the corrupted CSV by forcing it to overwrite if it's less than a day old
+    if csv_exists and csv_path.stat().st_size < 2000:
+        csv_exists = False
+        open(csv_path, 'w').close()
+    
+    csv_columns = [
+        "ticker", "cik", "company_name", "filing_date", "form", "filing_url", 
+        "effective_date", "ratio", "rounding_up", "summary", "confidence", "found_at",
+        "price_announce_close", "price_next_open", "split_happened", "execution_date_accurate"
+    ]
     
     # Use ThreadPoolExecutor for parallel processing
-    # Adjust max_workers as needed, staying mindful of SEC rate limits (10 req/sec)
-    # We have 0.1s sleep inside process_filing + request time, so 5-10 workers is safe-ish
+    import threading
+    csv_lock = threading.Lock()
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         # Submit all tasks
         future_to_filing = {executor.submit(process_filing, filing): filing for filing in filings}
@@ -171,11 +202,23 @@ def main():
                     hit['ticker'] = resolve_ticker(hit['cik'])
                     hits.append(hit)
                     
-                    # Save immediately
-                    if collection:
-                        query = {"cik": hit["cik"], "filing_date": hit["filing_date"]}
-                        collection.update_one(query, {"$set": hit}, upsert=True)
-                        print(f"\n[SAVED] {hit['ticker']} - {hit['summary']}")
+                    # Update MongoDB (if configured)
+                    if collection is not None:
+                        # Use filing_url as unique identifier
+                        query = {"filing_url": hit["filing_url"]}
+                        update = {"$set": hit}
+                        collection.update_one(query, update, upsert=True)
+                        print(f"\n[SAVED TO MONGODB] {hit['ticker']} - {hit['summary']}")
+                    
+                    # Update Local CSV
+                    with csv_lock:
+                        with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+                            writer = csv.DictWriter(f, fieldnames=csv_columns)
+                            if not csv_exists:
+                                writer.writeheader()
+                                csv_exists = True  # header is written
+                            writer.writerow(hit)
+                            print(f"[SAVED TO CSV] {hit['ticker']}")
             except Exception as e:
                 print(f"\nError processing {filing['company_name']}: {e}")
     
