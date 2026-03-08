@@ -8,7 +8,9 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-
+    env:
+      PYTHONPATH: src
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,23 +34,22 @@ jobs:
           MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
           MONGODB_COLLECTION: ${{ secrets.MONGODB_COLLECTION }}
         run: |
-          python web_parse_script/web_parse.py
-
+          python -m split_strategy.scrapers.runner
+      
       - name: Run EDGAR batch processor
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
           SEC_USER_AGENT: "Split Strategy Analysis contact@splitstrategy.com"
         run: |
-          python batch_process_edgar_nightly.py
-
+          python scripts/nightly_job.py
+      
       - name: Run Early Edgar Scanner (daily)
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          # Pass the current EST date explicitly so the UTC runner checks the correct SEC day
-          python scripts/scan_early_edgar.py $(TZ='America/New_York' date +%Y-%m-%d)
+          python scripts/scan_early_edgar.py
 
       - name: Run Split Metrics Updater
         run: |
