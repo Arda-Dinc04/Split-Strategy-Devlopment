@@ -9,9 +9,9 @@ import os
 import argparse
 import concurrent.futures
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
-import csv
+from zoneinfo import ZoneInfo
 
 # Add src to path
 current_dir = Path(__file__).resolve().parent
@@ -130,16 +130,8 @@ def process_filing(filing: dict) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="Early Edgar Scanner")
-    parser.add_argument("date", nargs="?", default=datetime.now().strftime("%Y-%m-%d"))
+    parser.add_argument("date", nargs="?", default=None)
     args = parser.parse_args()
-    
-    try:
-        target_date = datetime.strptime(args.date, "%Y-%m-%d")
-    except ValueError:
-        print(f"Invalid date format: {args.date}. Use YYYY-MM-DD.")
-        sys.exit(1)
-        
-    print(f"Starting Early Edgar Scan for {target_date.strftime('%Y-%m-%d')}...")
     
     if not OPENAI_API_KEY:
         print("Error: OPENAI_API_KEY not found in environment variables.")
@@ -147,11 +139,6 @@ def main():
     
     print("Loading ticker mappings...")
     load_ticker_mapping()
-    
-    filings = fetch_daily_filings(target_date, target_forms=TARGET_FORMS_SCAN)
-    print(f"Found {len(filings)} filings ({', '.join(TARGET_FORMS_SCAN)})")
-    
-    hits = []
     
     # Setup MongoDB Collection
     collection = None
@@ -162,67 +149,61 @@ def main():
         print(f"Connected to MongoDB: {MONGODB_DATABASE}.{EARLY_WARNINGS_COLLECTION}")
     else:
         print("Warning: MONGODB_URI not found. Not saving to database.")
-    
-    # Process
-    csv_path = current_dir.parent / 'DATA' / 'split_performance.csv'
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-    csv_exists = csv_path.exists()
-    
-    # Let's fix the corrupted CSV by forcing it to overwrite if it's less than a day old
-    if csv_exists and csv_path.stat().st_size < 2000:
-        csv_exists = False
-        open(csv_path, 'w').close()
-    
-    csv_columns = [
-        "ticker", "cik", "company_name", "filing_date", "form", "filing_url", 
-        "effective_date", "ratio", "rounding_up", "summary", "confidence", "found_at",
-        "price_announce_close", "price_next_open", "split_happened", "execution_date_accurate"
-    ]
-    
-    # Use ThreadPoolExecutor for parallel processing
-    import threading
-    csv_lock = threading.Lock()
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        # Submit all tasks
-        future_to_filing = {executor.submit(process_filing, filing): filing for filing in filings}
         
-        count = 0
-        total = len(filings)
+    # Determine target dates
+    ny_tz = ZoneInfo("America/New_York")
+    now_ny = datetime.now(ny_tz)
+    
+    if args.date:
+        try:
+            target_dates = [datetime.strptime(args.date, "%Y-%m-%d").date()]
+        except ValueError:
+            print(f"Invalid date format: {args.date}. Use YYYY-MM-DD.")
+            sys.exit(1)
+    else:
+        # Scan both today and yesterday in EST
+        today_ny = now_ny.date()
+        yesterday_ny = today_ny - timedelta(days=1)
+        target_dates = [yesterday_ny, today_ny]
         
-        for future in concurrent.futures.as_completed(future_to_filing):
-            count += 1
-            filing = future_to_filing[future]
-            # Simple progress indicator
-            print(f"Scanning {count}/{total}: {filing['company_name']}...      ", end="\r")
+    for target_date in target_dates:
+        print(f"\nStarting Early Edgar Scan for {target_date.strftime('%Y-%m-%d')}...")
+        filings = fetch_daily_filings(target_date, target_forms=TARGET_FORMS_SCAN)
+        print(f"Found {len(filings)} filings ({', '.join(TARGET_FORMS_SCAN)})")
+        
+        if not filings:
+            continue
             
-            try:
-                hit = future.result()
-                if hit:
-                    hit['ticker'] = resolve_ticker(hit['cik'])
-                    hits.append(hit)
-                    
-                    # Update MongoDB (if configured)
-                    if collection is not None:
-                        # Use filing_url as unique identifier
-                        query = {"filing_url": hit["filing_url"]}
-                        update = {"$set": hit}
-                        collection.update_one(query, update, upsert=True)
-                        print(f"\n[SAVED TO MONGODB] {hit['ticker']} - {hit['summary']}")
-                    
-                    # Update Local CSV
-                    with csv_lock:
-                        with open(csv_path, 'a', newline='', encoding='utf-8') as f:
-                            writer = csv.DictWriter(f, fieldnames=csv_columns)
-                            if not csv_exists:
-                                writer.writeheader()
-                                csv_exists = True  # header is written
-                            writer.writerow(hit)
-                            print(f"[SAVED TO CSV] {hit['ticker']}")
-            except Exception as e:
-                print(f"\nError processing {filing['company_name']}: {e}")
-    
-    print(f"\nScan Complete. Found {len(hits)} confirmed splits.")
+        hits = []
+        
+        # Parallel processing of filings
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_filing = {executor.submit(process_filing, filing): filing for filing in filings}
+            
+            count = 0
+            total = len(filings)
+            
+            for future in concurrent.futures.as_completed(future_to_filing):
+                count += 1
+                filing = future_to_filing[future]
+                print(f"Scanning {count}/{total}: {filing['company_name']}...      ", end="\r")
+                
+                try:
+                    hit = future.result()
+                    if hit:
+                        hit['ticker'] = resolve_ticker(hit['cik'])
+                        hits.append(hit)
+                        
+                        # Update MongoDB (if configured)
+                        if collection is not None:
+                            query = {"filing_url": hit["filing_url"]}
+                            update = {"$set": hit}
+                            collection.update_one(query, update, upsert=True)
+                            print(f"\n[SAVED TO MONGODB] {hit['ticker']} - {hit['summary']}")
+                except Exception as e:
+                    print(f"\nError processing {filing['company_name']}: {e}")
+        
+        print(f"\nScan for {target_date.strftime('%Y-%m-%d')} Complete. Found {len(hits)} confirmed splits.")
 
 if __name__ == "__main__":
     main()

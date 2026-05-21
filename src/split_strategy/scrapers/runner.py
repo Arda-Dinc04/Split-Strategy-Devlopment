@@ -103,7 +103,7 @@ def run_all_scrapers():
     if not final_df.empty:
         success = push_to_mongodb(final_df)
         if not success:
-             print("\n⚠ Warning: Failed to push to MongoDB.")
+             print("\nWarning: Failed to push to MongoDB.")
     else:
         print("\nNo data to push - final DataFrame is empty")
 

@@ -105,7 +105,7 @@ def plot_reverse_splits_per_year(df_splits):
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.savefig('1_reverse_splits_per_year.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 1_reverse_splits_per_year.png")
+    print("[OK] Saved: 1_reverse_splits_per_year.png")
     plt.close()
 
 def plot_split_ratio_distribution(df_splits):
@@ -151,7 +151,7 @@ def plot_split_ratio_distribution(df_splits):
     
     plt.tight_layout()
     plt.savefig('2_split_ratio_distribution.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 2_split_ratio_distribution.png")
+    print("[OK] Saved: 2_split_ratio_distribution.png")
     plt.close()
     
     # Binned histogram
@@ -167,7 +167,7 @@ def plot_split_ratio_distribution(df_splits):
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.savefig('2_split_ratio_binned.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 2_split_ratio_binned.png")
+    print("[OK] Saved: 2_split_ratio_binned.png")
     plt.close()
 
 def plot_lead_time_distribution(df_splits):
@@ -195,7 +195,7 @@ def plot_lead_time_distribution(df_splits):
                 lead_times.append(lead_days)
     
     if not lead_times:
-        print("⚠ No lead time data available")
+        print("[WARN] No lead time data available")
         return
     
     df_lead = pd.DataFrame({'lead_days': lead_times})
@@ -221,7 +221,7 @@ def plot_lead_time_distribution(df_splits):
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.savefig('3_lead_time_distribution.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 3_lead_time_distribution.png")
+    print("[OK] Saved: 3_lead_time_distribution.png")
     plt.close()
 
 def plot_lead_time_by_tier(df_splits):
@@ -250,7 +250,7 @@ def plot_lead_time_by_tier(df_splits):
                 tier_data.append({'tier': tier, 'lead_days': lead_days})
     
     if not tier_data:
-        print("⚠ No tier data available")
+        print("[WARN] No tier data available")
         return
     
     df_tier = pd.DataFrame(tier_data)
@@ -268,7 +268,7 @@ def plot_lead_time_by_tier(df_splits):
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.savefig('4_lead_time_by_tier.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 4_lead_time_by_tier.png")
+    print("[OK] Saved: 4_lead_time_by_tier.png")
     plt.close()
 
 def plot_form_mix(df_splits):
@@ -292,7 +292,7 @@ def plot_form_mix(df_splits):
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.savefig('5_form_mix.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 5_form_mix.png")
+    print("[OK] Saved: 5_form_mix.png")
     plt.close()
 
 def plot_flag_rates(df_edgar):
@@ -301,7 +301,7 @@ def plot_flag_rates(df_edgar):
     print("=" * 70)
     
     if len(df_edgar) == 0:
-        print("⚠ No EDGAR data available")
+        print("[WARN] No EDGAR data available")
         return
     
     total_filings = len(df_edgar)
@@ -330,7 +330,7 @@ def plot_flag_rates(df_edgar):
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.savefig('6_flag_rates.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 6_flag_rates.png")
+    print("[OK] Saved: 6_flag_rates.png")
     plt.close()
 
 def plot_lead_time_vs_ratio(df_splits):
@@ -360,7 +360,7 @@ def plot_lead_time_vs_ratio(df_splits):
                 data.append({'lead_days': lead_days, 'ratio': ratio})
     
     if not data:
-        print("⚠ No data available for heatmap")
+        print("[WARN] No data available for heatmap")
         return
     
     df_heat = pd.DataFrame(data)
@@ -383,7 +383,7 @@ def plot_lead_time_vs_ratio(df_splits):
     plt.ylabel('Lead Time (days)', fontsize=12)
     plt.tight_layout()
     plt.savefig('7_lead_time_vs_ratio_heatmap.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 7_lead_time_vs_ratio_heatmap.png")
+    print("[OK] Saved: 7_lead_time_vs_ratio_heatmap.png")
     plt.close()
 
 def plot_tier_vs_ratio(df_splits):
@@ -401,7 +401,7 @@ def plot_tier_vs_ratio(df_splits):
             tier_ratios.append({'tier': tier, 'ratio': ratio})
     
     if not tier_ratios:
-        print("⚠ No tier/ratio data available")
+        print("[WARN] No tier/ratio data available")
         return
     
     df_tier_ratio = pd.DataFrame(tier_ratios)
@@ -419,7 +419,7 @@ def plot_tier_vs_ratio(df_splits):
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.savefig('8_tier_vs_ratio.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 8_tier_vs_ratio.png")
+    print("[OK] Saved: 8_tier_vs_ratio.png")
     plt.close()
 
 def plot_filings_per_split(df_splits, df_edgar):
@@ -428,7 +428,7 @@ def plot_filings_per_split(df_splits, df_edgar):
     print("=" * 70)
     
     if len(df_edgar) == 0:
-        print("⚠ No EDGAR data available")
+        print("[WARN] No EDGAR data available")
         return
     
     filings_per_split = df_edgar['reverse_sa_id'].value_counts()
@@ -447,7 +447,7 @@ def plot_filings_per_split(df_splits, df_edgar):
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.savefig('9_filings_per_split.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 9_filings_per_split.png")
+    print("[OK] Saved: 9_filings_per_split.png")
     plt.close()
 
 def plot_announcement_cadence(df_splits):
@@ -475,7 +475,7 @@ def plot_announcement_cadence(df_splits):
                 cadence_data.append(days_before)
     
     if not cadence_data:
-        print("⚠ No cadence data available")
+        print("[WARN] No cadence data available")
         return
     
     df_cadence = pd.DataFrame({'days_before': cadence_data})
@@ -493,7 +493,7 @@ def plot_announcement_cadence(df_splits):
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.savefig('10_announcement_cadence.png', dpi=300, bbox_inches='tight')
-    print("✓ Saved: 10_announcement_cadence.png")
+    print("[OK] Saved: 10_announcement_cadence.png")
     plt.close()
 
 def plot_ratio_counts(df_splits):
@@ -539,7 +539,7 @@ def plot_ratio_counts(df_splits):
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     plt.savefig('11_split_ratio_counts.png', dpi=300, bbox_inches='tight')
-    print(f"✓ Saved: 11_split_ratio_counts.png")
+    print(f"[OK] Saved: 11_split_ratio_counts.png")
     plt.close()
     
     # Also create a version showing ratios with count >= threshold
@@ -550,13 +550,13 @@ def plot_ratio_counts(df_splits):
         plt.figure(figsize=(16, 8))
         plt.bar(range(len(filtered_data)), filtered_data['count'], color='coral', edgecolor='black')
         plt.xticks(range(len(filtered_data)), filtered_data['ratio'], rotation=90, ha='right', fontsize=9)
-        plt.title(f'Split Ratio Counts (Ratios with ≥{threshold} occurrences)', fontsize=14, fontweight='bold')
+        plt.title(f'Split Ratio Counts (Ratios with >={threshold} occurrences)', fontsize=14, fontweight='bold')
         plt.xlabel('Split Ratio', fontsize=12)
         plt.ylabel('Number of Splits', fontsize=12)
         plt.grid(axis='y', alpha=0.3)
         plt.tight_layout()
         plt.savefig('11_split_ratio_counts_filtered.png', dpi=300, bbox_inches='tight')
-        print(f"✓ Saved: 11_split_ratio_counts_filtered.png (ratios with ≥{threshold} occurrences)")
+        print(f"[OK] Saved: 11_split_ratio_counts_filtered.png (ratios with >={threshold} occurrences)")
         plt.close()
 
 def main():
@@ -568,7 +568,7 @@ def main():
     # Load data
     print("\nLoading data from MongoDB...")
     df_splits, df_edgar = load_data()
-    print(f"✓ Loaded {len(df_splits)} splits and {len(df_edgar)} EDGAR filings")
+    print(f"[OK] Loaded {len(df_splits)} splits and {len(df_edgar)} EDGAR filings")
     
     # Generate all plots
     plot_reverse_splits_per_year(df_splits)

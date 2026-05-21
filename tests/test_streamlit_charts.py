@@ -7,7 +7,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-st.title("📈 Price Chart Test")
+st.title("Price Chart Test")
 
 # Test with 2-3 tickers
 test_tickers = ["AAPL", "MSFT", "QYOUF"]
@@ -21,9 +21,9 @@ for ticker in test_tickers:
         hist = ticker_obj.history(period="7d", timeout=10)
         
         if hist.empty:
-            st.warning(f"⚠️ {ticker}: No data")
+            st.warning(f"{ticker}: No data")
         else:
-            st.success(f"✅ {ticker}: Got {len(hist)} days of data")
+            st.success(f"{ticker}: Got {len(hist)} days of data")
             
             # Try different chart formats
             st.write("**Method 1: Direct Close column**")
@@ -51,7 +51,7 @@ for ticker in test_tickers:
             st.dataframe(hist[['Close']].tail())
             
     except Exception as e:
-        st.error(f"❌ {ticker}: {e}")
+        st.error(f"{ticker}: {e}")
     
     st.markdown("---")
 

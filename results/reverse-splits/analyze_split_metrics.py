@@ -377,10 +377,10 @@ def analyze_split(symbol, split_date, db):
     prices, prices_raw = get_price_data(symbol, split_date)
     
     if prices is None or prices.empty:
-        print(f"  ✗ No price data available for {symbol}")
+        print(f"  [FAILED] No price data available for {symbol}")
         return None
     
-    print(f"  ✓ Got {len(prices)} days of data")
+    print(f"  [OK] Got {len(prices)} days of data")
     
     # Calculate all metrics
     results = {
@@ -528,7 +528,7 @@ def main():
         
         # Save to CSV
         df.to_csv('split_metrics_results.csv', index=False)
-        print(f"\n✓ Saved full results to: split_metrics_results.csv")
+        print(f"\n[OK] Saved full results to: split_metrics_results.csv")
 
 if __name__ == "__main__":
     main()

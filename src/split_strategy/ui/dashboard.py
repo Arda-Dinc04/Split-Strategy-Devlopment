@@ -50,16 +50,16 @@ def process_splits_without_edgar(splits_to_process, cik_mappings):
 def run_dashboard():
     st.set_page_config(
         page_title="Reverse Splits Dashboard",
-        page_icon="📊",
+        page_icon=None,
         layout="wide"
     )
     
-    st.title("📊 Recent Reverse Splits Dashboard")
+    st.title("Recent Reverse Splits Dashboard")
     
     # Add refresh button to clear cache
     col1, col2 = st.columns([1, 10])
     with col1:
-        if st.button("🔄 Refresh", help="Clear cache and reload data from MongoDB"):
+        if st.button("Refresh", help="Clear cache and reload data from MongoDB"):
             st.cache_data.clear()
             st.rerun()
     
@@ -126,7 +126,7 @@ def run_dashboard():
             })
     
     # Create tabs for different views
-    tab1, tab2 = st.tabs(["📉 Confirmed Splits", "⚠️ Early Warnings"])
+    tab1, tab2 = st.tabs(["Confirmed Splits", "Early Warnings"])
     
     with tab1:
         if not recent_splits:
@@ -140,15 +140,15 @@ def run_dashboard():
             
             # Process splits without EDGAR data
             if splits_to_process:
-                st.warning(f"⚠️ Found {len(splits_to_process)} split(s) without EDGAR data.")
+                st.warning(f"Found {len(splits_to_process)} split(s) without EDGAR data.")
                 
-                if st.button(f"🔍 Process EDGAR Data for {len(splits_to_process)} Split(s)", type="primary"):
+                if st.button(f"Process EDGAR Data for {len(splits_to_process)} Split(s)", type="primary"):
                     cik_mappings = get_cik_mappings()
                     results = process_splits_without_edgar(splits_to_process, cik_mappings)
                     
                     # Show results
                     success_count = sum(1 for r in results if r["status"] == "success")
-                    st.success(f"✅ Processed {success_count}/{len(results)} splits successfully!")
+                    st.success(f"Processed {success_count}/{len(results)} splits successfully!")
                     
                     # Refresh to show updated data
                     st.rerun()
@@ -206,7 +206,7 @@ def run_dashboard():
             rounding_splits = [s for s in recent_splits if s["Rounding"] == "Yes" and s["rounding_filings"]]
             if rounding_splits:
                 st.markdown("---")
-                st.subheader("📄 EDGAR Filings with Rounding Compliance")
+                st.subheader("EDGAR Filings with Rounding Compliance")
                 st.caption("Click to expand and view the actual EDGAR filings that contain rounding language")
                 
                 for split_info in rounding_splits:
@@ -215,7 +215,7 @@ def run_dashboard():
                     split_date = split_info["Date"]
                     filings = split_info["rounding_filings"]
                     
-                    with st.expander(f"🔍 {symbol} - {company_name} ({split_date}) - {len(filings)} filing(s)"):
+                    with st.expander(f"{symbol} - {company_name} ({split_date}) - {len(filings)} filing(s)"):
                         for i, filing in enumerate(filings, 1):
                             st.markdown(f"**Filing {i}: {filing['form']}**")
                             
@@ -225,7 +225,7 @@ def run_dashboard():
                                 st.write(f"**Accession:** {filing['accession']}")
                             with col2:
                                 if filing['document_url']:
-                                    st.markdown(f"[📄 View Filing]({filing['document_url']})")
+                                    st.markdown(f"[View Filing]({filing['document_url']})")
                             
                             # Show rounding text snippet
                             if filing.get('rounding_text'):
@@ -262,8 +262,52 @@ def run_dashboard():
             if not early_splits:
                 st.info("No announced splits found yet. Run the `scan_early_edgar.py` script to populate.")
             else:
-                st.success(f"Found {len(early_splits)} confirmed announcements.")
+                # 1. Clean, Premium Filtering Layout
+                st.markdown("### Filter Announcements")
                 
+                rounding_options = ["YES", "NO", "?"]
+                confidence_options = ["HIGH", "MEDIUM", "LOW", "N/A"]
+                
+                col_search, col_round, col_conf, col_reset = st.columns([2, 1.5, 1.5, 1])
+                
+                with col_search:
+                    search_query = st.text_input(
+                        "Search Ticker or Company", 
+                        value="", 
+                        placeholder="e.g. ZOOZW",
+                        key="early_search"
+                    )
+                
+                with col_round:
+                    selected_rounding = st.multiselect(
+                        "Rounding", 
+                        options=rounding_options, 
+                        default=rounding_options,
+                        key="early_round"
+                    )
+                
+                with col_conf:
+                    # Get unique confidences present, or fallback to default options
+                    unique_confs = sorted(list(set([str(p.get("confidence", "N/A")).upper() for p in early_splits if p.get("confidence")])))
+                    if not unique_confs:
+                        unique_confs = confidence_options
+                    
+                    selected_confidence = st.multiselect(
+                        "AI Confidence", 
+                        options=unique_confs, 
+                        default=unique_confs,
+                        key="early_conf"
+                    )
+                
+                with col_reset:
+                    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                    if st.button("Reset Filters", use_container_width=True):
+                        st.session_state.early_search = ""
+                        st.session_state.early_round = rounding_options
+                        st.session_state.early_conf = unique_confs
+                        st.rerun()
+
+                # 2. Process Raw Data
                 display_data = []
                 for p in early_splits:
                     rounding = "?"
@@ -280,26 +324,64 @@ def run_dashboard():
                         "Ratio": p.get("ratio", "?"),
                         "Rounding": rounding,
                         "Summary": p.get("summary", ""),
-                        "Confidence": p.get("confidence", "N/A"),
+                        "Confidence": str(p.get("confidence", "N/A")).upper(),
                         "Link": p.get("filing_url")
                     })
                 
-                e_df = pd.DataFrame(display_data)
+                # 3. Apply Filters in Python
+                filtered_data = []
+                for row in display_data:
+                    # Search Filter
+                    query = search_query.strip().lower()
+                    if query:
+                        ticker_match = query in row["Ticker"].lower()
+                        company_match = query in (row["Company"] or "").lower()
+                        if not (ticker_match or company_match):
+                            continue
+                    
+                    # Rounding Filter
+                    if row["Rounding"] not in selected_rounding:
+                        continue
+                    
+                    # Confidence Filter
+                    if row["Confidence"] not in selected_confidence:
+                        continue
+                    
+                    filtered_data.append(row)
                 
-                if not e_df.empty and "Filing Date" in e_df.columns:
-                    e_df["Filing Date"] = pd.to_datetime(e_df["Filing Date"])
-
-                st.data_editor(
-                    e_df,
-                    column_config={
-                        "Link": st.column_config.LinkColumn("Filing URL", display_text="View Filing"),
-                        "Filing Date": st.column_config.DateColumn("Filing Date", format="YYYY-MM-DD"),
-                        "Summary": st.column_config.TextColumn("AI Summary", width="large", help="Full summary available on hover"),
-                        "Rounding": st.column_config.TextColumn("Rounding Up?", help="Does the filing explicitly state fractional shares are rounded up?"),
-                    },
-                    hide_index=True,
-                    use_container_width=True
-                )
+                st.success(f"Showing {len(filtered_data)} of {len(early_splits)} confirmed announcements.")
+                
+                if not filtered_data:
+                    st.info("No announcements match the selected filter criteria.")
+                else:
+                    e_df = pd.DataFrame(filtered_data)
+                    
+                    if "Filing Date" in e_df.columns:
+                        try:
+                            e_df["Filing Date"] = pd.to_datetime(e_df["Filing Date"])
+                        except:
+                            pass
+                    
+                    # 4. Highlight "Rounding == YES" as soft green rows (Major Opportunities)
+                    def highlight_rounding_up(row):
+                        if row["Rounding"] == "YES":
+                            return ['background-color: #e8f5e9; color: #2e7d32; font-weight: 600'] * len(row)
+                        return [''] * len(row)
+                    
+                    styled_df = e_df.style.apply(highlight_rounding_up, axis=1)
+                    
+                    st.dataframe(
+                        styled_df,
+                        column_config={
+                            "Link": st.column_config.LinkColumn("Filing URL", display_text="View Filing"),
+                            "Filing Date": st.column_config.DateColumn("Filing Date", format="YYYY-MM-DD"),
+                            "Summary": st.column_config.TextColumn("AI Summary", width="large", help="Full summary available on hover"),
+                            "Rounding": st.column_config.TextColumn("Rounding Up?", help="Does the filing explicitly state fractional shares are rounded up?"),
+                        },
+                        hide_index=True,
+                        use_container_width=True,
+                        height=400
+                    )
                 
         except Exception as e:
             st.error(f"Error fetching Early EDGAR data: {e}")
@@ -308,9 +390,9 @@ def run_dashboard():
     st.markdown("---")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔄 Refresh Data"):
+        if st.button("Refresh Data"):
             st.rerun()
     with col2:
-        if st.button("🗑️ Clear Cache"):
+        if st.button("Clear Cache"):
             st.cache_data.clear()
             st.success("Cache cleared! Refresh the page.")
