@@ -20,6 +20,80 @@ def get_cik_mappings():
     """Get CIK mappings (cached)"""
     return get_cik_mapping_with_names()
 
+@st.cache_data(ttl=600)  # Cache for 10 minutes
+def fetch_recent_splits():
+    """Fetch and process recent splits from MongoDB with caching"""
+    try:
+        reverse_collection = get_collection(REVERSE_SPLITS_COLLECTION)
+    except Exception:
+        return []
+    
+    today = datetime.now().date()
+    three_days_ago = today - timedelta(days=3)
+    
+    splits = list(reverse_collection.find({}).sort("Date", -1))
+    
+    recent_splits = []
+    for split in splits:
+        split_date_str = split.get("Date", "")
+        split_date = parse_date(split_date_str)
+        
+        if not split_date:
+            continue
+        
+        try:
+            split_date_obj = datetime.strptime(split_date, "%Y-%m-%d").date()
+        except:
+            continue
+            
+        if split_date_obj >= three_days_ago:
+            reverse_splits_id = str(split.get("_id"))
+            
+            has_edgar = has_edgar_data(reverse_splits_id)
+            
+            rounding = False
+            if has_edgar:
+                rounding = check_rounding_flag(reverse_splits_id)
+            
+            rounding_filings = []
+            if rounding:
+                rounding_filings = get_rounding_filings(reverse_splits_id)
+            
+            # Clean non-serializable ObjectId
+            split_doc_clean = {k: v for k, v in split.items() if k != "_id"}
+            
+            recent_splits.append({
+                "Date": split_date_str,
+                "Symbol": split.get("Symbol", ""),
+                "Company Name": split.get("Company Name", ""),
+                "Split Ratio": split.get("Split Ratio", ""),
+                "Rounding": "Yes" if rounding else "",
+                "Has EDGAR": has_edgar,
+                "reverse_splits_id": reverse_splits_id,
+                "split_date_obj_str": split_date_obj.strftime("%Y-%m-%d"),
+                "split_doc": split_doc_clean,
+                "rounding_filings": rounding_filings
+            })
+    return recent_splits
+
+@st.cache_data(ttl=600)  # Cache for 10 minutes
+def fetch_early_splits():
+    """Fetch all early EDGAR split warnings from MongoDB with caching"""
+    try:
+        early_collection = get_collection(EARLY_WARNINGS_COLLECTION)
+    except Exception:
+        return []
+        
+    early_splits = list(early_collection.find({}).sort("filing_date", -1))
+    
+    cleaned_splits = []
+    for split in early_splits:
+        clean = {k: v for k, v in split.items() if k != "_id"}
+        clean["_id"] = str(split["_id"])
+        cleaned_splits.append(clean)
+        
+    return cleaned_splits
+
 def process_splits_without_edgar(splits_to_process, cik_mappings):
     """Process splits without EDGAR data"""
     results = []
@@ -65,65 +139,27 @@ def run_dashboard():
     
     st.markdown("---")
     
-    # Connect to MongoDB
+    # Fetch recent splits using cached function
     try:
-        reverse_collection = get_collection(REVERSE_SPLITS_COLLECTION)
-        edgar_collection = get_collection(EDGAR_COLLECTION)
+        raw_recent_splits = fetch_recent_splits()
     except Exception as e:
-        st.error(f"Error connecting to MongoDB: {e}")
+        st.error(f"Error fetching splits from database: {e}")
         return
     
+    # Reconstruct date objects in memory for compatibility
+    recent_splits = []
+    for s in raw_recent_splits:
+        try:
+            split_date_obj = datetime.strptime(s["split_date_obj_str"], "%Y-%m-%d").date()
+            s_copy = dict(s)
+            s_copy["split_date_obj"] = split_date_obj
+            recent_splits.append(s_copy)
+        except Exception:
+            continue
+
     # Get date range - Show splits from 3 days ago onwards (including all future dates)
     today = datetime.now().date()
     three_days_ago = today - timedelta(days=3)
-    
-    # Query ALL splits (we'll filter by date below)
-    splits = list(reverse_collection.find({}).sort("Date", -1))
-    
-    # Filter and process splits
-    recent_splits = []
-    for split in splits:
-        split_date_str = split.get("Date", "")
-        split_date = parse_date(split_date_str)
-        
-        if not split_date:
-            continue
-        
-        # Parse output is YYYY-MM-DD string, convert to date object for comparison
-        try:
-            split_date_obj = datetime.strptime(split_date, "%Y-%m-%d").date()
-        except:
-            continue
-            
-        # Only include splits from 3 days ago onwards (including ALL future dates)
-        if split_date_obj >= three_days_ago:
-            reverse_splits_id = str(split.get("_id"))
-            
-            # Check if has EDGAR data
-            has_edgar = has_edgar_data(reverse_splits_id)
-            
-            # Check rounding flag
-            rounding = False
-            if has_edgar:
-                rounding = check_rounding_flag(reverse_splits_id)
-            
-            # Get rounding filings if rounding flag is True
-            rounding_filings = []
-            if rounding:
-                rounding_filings = get_rounding_filings(reverse_splits_id)
-            
-            recent_splits.append({
-                "Date": split_date_str,
-                "Symbol": split.get("Symbol", ""),
-                "Company Name": split.get("Company Name", ""),
-                "Split Ratio": split.get("Split Ratio", ""),
-                "Rounding": "Yes" if rounding else "",
-                "Has EDGAR": has_edgar,
-                "reverse_splits_id": reverse_splits_id,
-                "split_date_obj": split_date_obj,
-                "split_doc": split,
-                "rounding_filings": rounding_filings
-            })
     
     # Create tabs for different views
     tab1, tab2 = st.tabs(["Confirmed Splits", "Early Warnings"])
@@ -255,9 +291,8 @@ def run_dashboard():
         """)
         
         try:
-            early_collection = get_collection(EARLY_WARNINGS_COLLECTION)
-            # Fetch all, sorted by filing date (newest first)
-            early_splits = list(early_collection.find({}).sort("filing_date", -1))
+            # Fetch early splits using cached function
+            early_splits = fetch_early_splits()
             
             if not early_splits:
                 st.info("No announced splits found yet. Run the `scan_early_edgar.py` script to populate.")
@@ -354,6 +389,9 @@ def run_dashboard():
                 if not filtered_data:
                     st.info("No announcements match the selected filter criteria.")
                 else:
+                    # Put Rounding == YES at the top (stable sort preserves filing_date desc order within groups)
+                    filtered_data.sort(key=lambda x: 0 if x["Rounding"] == "YES" else 1)
+                    
                     e_df = pd.DataFrame(filtered_data)
                     
                     if "Filing Date" in e_df.columns:
@@ -362,16 +400,8 @@ def run_dashboard():
                         except:
                             pass
                     
-                    # 4. Highlight "Rounding == YES" as soft green rows (Major Opportunities)
-                    def highlight_rounding_up(row):
-                        if row["Rounding"] == "YES":
-                            return ['background-color: #e8f5e9; color: #2e7d32; font-weight: 600'] * len(row)
-                        return [''] * len(row)
-                    
-                    styled_df = e_df.style.apply(highlight_rounding_up, axis=1)
-                    
                     st.dataframe(
-                        styled_df,
+                        e_df,
                         column_config={
                             "Link": st.column_config.LinkColumn("Filing URL", display_text="View Filing"),
                             "Filing Date": st.column_config.DateColumn("Filing Date", format="YYYY-MM-DD"),
