@@ -303,25 +303,49 @@ def run_dashboard():
                 rounding_options = ["YES", "NO", "?"]
                 confidence_options = ["HIGH", "MEDIUM", "LOW", "N/A"]
                 
-                col_search, col_round, col_conf, col_reset = st.columns([2, 1.5, 1.5, 1])
+                # Determine dates in dataset for defaults
+                filing_dates = []
+                effective_dates = []
+                for p in early_splits:
+                    fd = p.get("filing_date")
+                    if fd:
+                        try:
+                            filing_dates.append(datetime.strptime(fd[:10], "%Y-%m-%d").date())
+                        except:
+                            pass
+                    ed = p.get("effective_date")
+                    if ed and ed != "Pending":
+                        try:
+                            effective_dates.append(datetime.strptime(ed[:10], "%Y-%m-%d").date())
+                        except:
+                            pass
                 
-                with col_search:
+                min_filing = min(filing_dates) if filing_dates else datetime.now().date() - timedelta(days=365)
+                max_filing = max(filing_dates) if filing_dates else datetime.now().date() + timedelta(days=30)
+                
+                min_effective = min(effective_dates) if effective_dates else datetime.now().date() - timedelta(days=30)
+                max_effective = max(effective_dates) if effective_dates else datetime.now().date() + timedelta(days=365)
+                
+                col1, col2, col3 = st.columns([3, 2.5, 2.5])
+                
+                with col1:
                     search_query = st.text_input(
                         "Search Ticker or Company", 
                         value="", 
-                        placeholder="e.g. ZOOZW",
+                        placeholder="Search...",
                         key="early_search"
                     )
                 
-                with col_round:
+                with col2:
                     selected_rounding = st.multiselect(
                         "Rounding", 
                         options=rounding_options, 
-                        default=rounding_options,
+                        default=[],
+                        placeholder="All Rounding Options",
                         key="early_round"
                     )
                 
-                with col_conf:
+                with col3:
                     # Get unique confidences present, or fallback to default options
                     unique_confs = sorted(list(set([str(p.get("confidence", "N/A")).upper() for p in early_splits if p.get("confidence")])))
                     if not unique_confs:
@@ -330,16 +354,35 @@ def run_dashboard():
                     selected_confidence = st.multiselect(
                         "AI Confidence", 
                         options=unique_confs, 
-                        default=unique_confs,
+                        default=[],
+                        placeholder="All Confidence Levels",
                         key="early_conf"
+                    )
+                
+                col_date1, col_date2, col_reset = st.columns([3, 3, 1])
+                
+                with col_date1:
+                    filing_range = st.date_input(
+                        "Filing Date Range",
+                        value=(min_filing, max_filing),
+                        key="early_filing_range"
+                    )
+                
+                with col_date2:
+                    effective_range = st.date_input(
+                        "Effective Date Range",
+                        value=(min_effective, max_effective),
+                        key="early_effective_range"
                     )
                 
                 with col_reset:
                     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
                     if st.button("Reset Filters", use_container_width=True):
                         st.session_state.early_search = ""
-                        st.session_state.early_round = rounding_options
-                        st.session_state.early_conf = unique_confs
+                        st.session_state.early_round = []
+                        st.session_state.early_conf = []
+                        st.session_state.early_filing_range = (min_filing, max_filing)
+                        st.session_state.early_effective_range = (min_effective, max_effective)
                         st.rerun()
 
                 # 2. Process Raw Data
@@ -374,13 +417,45 @@ def run_dashboard():
                         if not (ticker_match or company_match):
                             continue
                     
-                    # Rounding Filter
-                    if row["Rounding"] not in selected_rounding:
+                    # Rounding Filter (show all if empty/no selection)
+                    if selected_rounding and row["Rounding"] not in selected_rounding:
                         continue
                     
-                    # Confidence Filter
-                    if row["Confidence"] not in selected_confidence:
+                    # Confidence Filter (show all if empty/no selection)
+                    if selected_confidence and row["Confidence"] not in selected_confidence:
                         continue
+
+                    # Filing Date Range Filter
+                    if filing_range and len(filing_range) == 2:
+                        start_date, end_date = filing_range
+                        row_date_str = row["Filing Date"]
+                        if row_date_str:
+                            try:
+                                if isinstance(row_date_str, str):
+                                    row_date = datetime.strptime(row_date_str[:10], "%Y-%m-%d").date()
+                                else:
+                                    row_date = row_date_str.date() if hasattr(row_date_str, 'date') else row_date_str
+                                if not (start_date <= row_date <= end_date):
+                                    continue
+                            except:
+                                pass
+
+                    # Effective Date Range Filter
+                    if effective_range and len(effective_range) == 2:
+                        start_date, end_date = effective_range
+                        row_date_str = row["Effective Date"]
+                        if row_date_str and row_date_str != "Pending":
+                            try:
+                                if isinstance(row_date_str, str):
+                                    row_date = datetime.strptime(row_date_str[:10], "%Y-%m-%d").date()
+                                else:
+                                    row_date = row_date_str.date() if hasattr(row_date_str, 'date') else row_date_str
+                                if not (start_date <= row_date <= end_date):
+                                    continue
+                            except:
+                                continue
+                        else:
+                            continue
                     
                     filtered_data.append(row)
                 
