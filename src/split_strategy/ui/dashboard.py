@@ -162,7 +162,7 @@ def run_dashboard():
     three_days_ago = today - timedelta(days=3)
     
     # Create tabs for different views
-    tab1, tab2 = st.tabs(["Confirmed Splits", "Early Warnings"])
+    tab1, tab2, tab3 = st.tabs(["Confirmed Splits", "Early Warnings", "Edgar splits"])
     
     with tab1:
         if not recent_splits:
@@ -490,6 +490,79 @@ def run_dashboard():
                 
         except Exception as e:
             st.error(f"Error fetching Early EDGAR data: {e}")
+
+    with tab3:
+        st.header("Edgar Splits (High AI Confidence)")
+        st.markdown("""
+        Announced reverse splits with **HIGH** confidence AI classifications.
+        - **Sorted Chronologically**: Displayed in order from the soonest effective date to the furthest.
+        """)
+        
+        try:
+            early_splits = fetch_early_splits()
+            
+            # Filter to HIGH confidence
+            high_conf_splits = [p for p in early_splits if str(p.get("confidence", "")).upper() == "HIGH"]
+            
+            if not high_conf_splits:
+                st.info("No announced splits with high confidence found.")
+            else:
+                # Sort by effective date chronologically ascending (soonest first)
+                # Pending dates at the very end
+                def sort_by_effective_date(x):
+                    ed = x.get("effective_date")
+                    if not ed or ed == "Pending":
+                        return (1, datetime.max.date())
+                    try:
+                        return (0, datetime.strptime(ed[:10], "%Y-%m-%d").date())
+                    except:
+                        return (1, datetime.max.date())
+
+                high_conf_splits.sort(key=sort_by_effective_date)
+                
+                # Process data for display
+                display_data_hc = []
+                for p in high_conf_splits:
+                    rounding = "?"
+                    if p.get("rounding_up") is True:
+                        rounding = "YES"
+                    elif p.get("rounding_up") is False:
+                        rounding = "NO"
+                        
+                    display_data_hc.append({
+                        "Filing Date": p.get("filing_date"),
+                        "Ticker": p.get("ticker", "UNKNOWN"),
+                        "Company": p.get("company_name"),
+                        "Effective Date": p.get("effective_date", "Pending"),
+                        "Ratio": p.get("ratio", "?"),
+                        "Rounding": rounding,
+                        "Summary": p.get("summary", ""),
+                        "Confidence": "HIGH",
+                        "Link": p.get("filing_url")
+                    })
+                
+                hc_df = pd.DataFrame(display_data_hc)
+                
+                if "Filing Date" in hc_df.columns:
+                    try:
+                        hc_df["Filing Date"] = pd.to_datetime(hc_df["Filing Date"])
+                    except:
+                        pass
+                
+                st.dataframe(
+                    hc_df,
+                    column_config={
+                        "Link": st.column_config.LinkColumn("Filing URL", display_text="View Filing"),
+                        "Filing Date": st.column_config.DateColumn("Filing Date", format="YYYY-MM-DD"),
+                        "Summary": st.column_config.TextColumn("AI Summary", width="large", help="Full summary available on hover"),
+                        "Rounding": st.column_config.TextColumn("Rounding Up?", help="Does the filing explicitly state fractional shares are rounded up?"),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                    height=500
+                )
+        except Exception as e:
+            st.error(f"Error fetching High Confidence Edgar splits: {e}")
 
     # Refresh button
     st.markdown("---")
