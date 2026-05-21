@@ -17,12 +17,12 @@ def test_ticker_direct(ticker: str):
         # Step 1: Create ticker object
         print(f"1. Creating Ticker object...")
         ticker_obj = yf.Ticker(ticker)
-        print(f"   ✅ Ticker object created")
+        print(f"   [OK] Ticker object created")
         
         # Step 2: Get history (7 days) - NO TIMEOUT
         print(f"2. Fetching 7-day history (no timeout parameter)...")
         hist_7d = ticker_obj.history(period="7d")
-        print(f"   ✅ History retrieved")
+        print(f"   [OK] History retrieved")
         print(f"   - Shape: {hist_7d.shape}")
         print(f"   - Empty: {hist_7d.empty}")
         
@@ -38,7 +38,7 @@ def test_ticker_direct(ticker: str):
             chart_df = pd.DataFrame({
                 'Price': hist_7d['Close'].values
             }, index=hist_7d.index)
-            print(f"   ✅ Formatted DataFrame created")
+            print(f"   [OK] Formatted DataFrame created")
             print(f"   - Shape: {chart_df.shape}")
             print(f"   - Columns: {list(chart_df.columns)}")
             print(f"   - Index type: {type(chart_df.index)}")
@@ -48,11 +48,11 @@ def test_ticker_direct(ticker: str):
             
             return True, chart_df
         else:
-            print(f"   ⚠️  History is empty!")
+            print(f"   [WARN] History is empty!")
             return False, None
             
     except Exception as e:
-        print(f"   ❌ Error: {str(e)}")
+        print(f"   [ERROR] Error: {str(e)}")
         import traceback
         print(f"\n   Full traceback:")
         print(traceback.format_exc())
@@ -79,7 +79,7 @@ def main():
     print("SUMMARY")
     print("="*70)
     for ticker, result in results.items():
-        status = "✅ SUCCESS" if result['success'] else "❌ FAILED"
+        status = "SUCCESS" if result['success'] else "FAILED"
         print(f"{ticker}: {status}")
         if result['success'] and result['data'] is not None:
             print(f"  - Data points: {len(result['data'])}")

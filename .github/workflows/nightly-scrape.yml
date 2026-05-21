@@ -2,7 +2,7 @@ name: Nightly Split Collector
 
 on:
   schedule:
-    - cron: "45 4 * * *" # 04:45 UTC (11:45 PM EST previous day)
+    - cron: "0 9 * * *" # 09:00 UTC (05:00 AM EST)
   workflow_dispatch: # Allow manual triggering from GitHub Actions tab
 
 jobs:
@@ -50,15 +50,3 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python scripts/scan_early_edgar.py
-
-      - name: Run Split Metrics Updater
-        run: |
-          python scripts/update_split_metrics.py
-
-      - name: Commit and push tracking CSV
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add DATA/split_performance.csv
-          # Only commit and push if there are changes
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update daily split tracking" && git push)
